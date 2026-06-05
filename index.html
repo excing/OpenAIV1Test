@@ -1,0 +1,1898 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <link id="app-badge-icon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%232b2928'/%3E%3Ctext x='15' y='16.5' text-anchor='middle' dominant-baseline='middle' fill='white' font-family='SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace' font-size='14' font-weight='600'%3E/v1%3C/text%3E%3C/svg%3E" />
+    <title>Open AI Gateway Debug</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+      /* ── Design tokens ── */
+      :root {
+        /* Surfaces */
+        --bg: oklch(97.6% 0.004 85);
+        --surface: oklch(100% 0 0);
+        --surface-hover: oklch(98.5% 0.004 85);
+        /* Ink */
+        --ink: oklch(20% 0.008 85);
+        --ink-soft: oklch(42% 0.018 85);
+        --ink-muted: oklch(60% 0.02 85);
+        /* Lines */
+        --line: oklch(89% 0.012 85);
+        --line-light: oklch(94% 0.008 85);
+        /* Accent */
+        --accent: oklch(52% 0.17 252);
+        --accent-soft: oklch(93% 0.04 252);
+        --accent-text: oklch(97% 0.005 252);
+        /* Semantic */
+        --ok: oklch(56% 0.14 155);
+        --ok-soft: oklch(92% 0.06 155);
+        --danger: oklch(53% 0.18 20);
+        --danger-soft: oklch(94% 0.04 20);
+        /* Console (warm dark, not AI-default cool dark) */
+        --console-bg: oklch(21% 0.01 72);
+        --console-surface: oklch(25% 0.012 72);
+        --console-line: oklch(32% 0.015 72);
+        --console-text: oklch(85% 0.015 80);
+        --console-muted: oklch(58% 0.025 80);
+        --console-accent: oklch(70% 0.12 160);
+        /* Radii */
+        --r-xs: 4px;
+        --r-sm: 6px;
+        --r-md: 8px;
+        --r-lg: 12px;
+        /* Motion */
+        --fast: 140ms ease;
+        --smooth: 220ms cubic-bezier(0.2, 0, 0.15, 1);
+        /* Fonts — system stack, no external dependency */
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+        --mono: "SF Mono", "Fira Code", "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+      }
+
+      /* ── Reset ── */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; }
+      html { min-height: 100%; -webkit-font-smoothing: antialiased; }
+      body {
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font: 400 13px/1.55 var(--sans);
+      }
+      button, input, textarea, select { font: inherit; color: inherit; }
+      button { cursor: pointer; border: 0; background: none; padding: 0; }
+      fieldset { border: 0; padding: 0; }
+      [v-cloak] { display: none !important; }
+
+      /* ── Shared primitives ── */
+      .input {
+        width: 100%; min-height: 36px; padding: 7px 10px;
+        font-size: 12.5px;
+        background: var(--surface); border: 1px solid var(--line);
+        border-radius: var(--r-sm); outline: none;
+        transition: border-color var(--fast), box-shadow var(--fast);
+      }
+      .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+      .input.mono, .mono-input { font-family: var(--mono); font-size: 12px; }
+      textarea.input { min-height: 90px; resize: vertical; line-height: 1.6; }
+      select.input { appearance: none; padding-right: 28px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat; background-position: right 8px center; }
+
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        min-height: 34px; padding: 7px 14px; font-size: 12.5px; font-weight: 600;
+        border-radius: var(--r-sm); white-space: nowrap;
+        transition: background var(--fast), transform var(--fast), box-shadow var(--fast);
+      }
+      .btn:active { transform: scale(0.975); }
+      .btn-primary { background: var(--ink); color: #fff; }
+      .btn-primary:hover { background: oklch(28% 0.008 85); }
+      .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+      .btn-secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+      .btn-secondary:hover { background: var(--surface-hover); border-color: oklch(80% 0.015 85); }
+      .btn-ghost { background: transparent; color: var(--ink-soft); }
+      .btn-ghost:hover { background: var(--surface-hover); color: var(--ink); }
+
+      .pill {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 3px 10px; font-size: 11.5px; font-weight: 600;
+        border-radius: 99px; line-height: 1.5;
+      }
+      .pill-ok { background: var(--ok-soft); color: var(--ok); }
+      .pill-err { background: var(--danger-soft); color: var(--danger); }
+      .pill-neutral { background: var(--line-light); color: var(--ink-soft); }
+
+      .dot { width: 7px; height: 7px; border-radius: 99px; flex-shrink: 0; }
+      .dot-ok { background: var(--ok); }
+      .dot-err { background: var(--danger); }
+      .dot-idle { background: var(--ink-muted); }
+
+      .label { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 600;
+        color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+
+      .kbd { display: inline-block; padding: 1px 6px; font-size: 11px; font-family: var(--mono);
+        background: var(--surface); border: 1px solid var(--line); border-radius: 3px; }
+
+      /* ── Layout ── */
+      .app { min-height: 100vh; display: grid; grid-template-rows: auto auto 1fr; }
+
+      /* Header */
+      .app-header {
+        display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+        padding: 10px 24px;
+        background: oklch(100% 0 0 / 85%); backdrop-filter: blur(10px);
+        position: sticky; top: 0; z-index: 30;
+      }
+      .app-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+      .app-badge {
+        width: 32px; height: 32px; display: block; flex-shrink: 0;
+        background: var(--ink); border-radius: var(--r-xs); object-fit: contain;
+      }
+      .app-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+
+      /* Tabs */
+      .app-tabs {
+        display: flex; gap: 2px; padding: 6px 20px; overflow-x: auto;
+        border-bottom: 1px solid var(--line-light);
+        background: oklch(100% 0 0 / 70%); backdrop-filter: blur(8px);
+        position: sticky; top: 52px; z-index: 20;
+      }
+      .tab {
+        flex-shrink: 0; min-height: 34px; padding: 6px 14px;
+        font-size: 12.5px; font-weight: 600; border-radius: var(--r-sm);
+        color: var(--ink-soft); transition: all var(--fast);
+      }
+      .tab:hover { color: var(--ink); background: var(--surface-hover); }
+      .tab.active { color: var(--ink); background: var(--surface); box-shadow: 0 1px 3px oklch(0 0 0 / 6%); }
+
+      /* Main grid */
+      .app-main {
+        display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+        min-height: 0; flex: 1;
+      }
+
+      /* Content area */
+      .app-content { min-width: 0; overflow-y: auto; padding: 8px; }
+
+      .content-hero { margin-bottom: 28px; }
+      .content-hero .method-badge {
+        display: inline-block; padding: 2px 8px; font-size: 11px; font-weight: 700;
+        font-family: var(--mono); border-radius: 3px; margin-bottom: 8px;
+        background: var(--ink); color: #fff;
+      }
+      .content-hero h2 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+      .content-hero p { margin-top: 6px; font-size: 14px; color: var(--ink-soft); max-width: 560px; line-height: 1.55; }
+
+      /* Product surfaces */
+      .product-surface {
+        background: var(--surface); overflow: hidden; border: 1px solid var(--line-light); border-radius: var(--r-lg); 
+      }
+      .surface-hd {
+        display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;
+        padding: 18px 20px 16px; border-bottom: 1px solid var(--line-light);
+      }
+      .surface-hd h3 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+      .surface-hd .hd-desc { margin-top: 3px; font-size: 13px; color: var(--ink-soft); }
+      .surface-bd { padding: 20px; }
+      .surface-ft {
+        display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px;
+        padding: 14px 20px; border-top: 1px solid var(--line-light); align-items: center;
+      }
+
+      /* Chat */
+      .chat-list { display: grid; gap: 10px; min-height: 280px; align-content: start; }
+      .chat-msg {
+        display: grid; grid-template-columns: 100px 1fr auto; gap: 10px; align-items: start;
+        padding: 10px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-light);
+        background: var(--surface);
+      }
+      .chat-msg.assistant { border-left: 3px solid var(--ok); }
+      .chat-msg.user { border-left: 3px solid var(--accent); }
+      .chat-msg select.input { min-height: 32px; padding: 4px 24px 4px 8px; font-size: 12px; }
+      .chat-msg textarea.input { min-height: 64px; padding: 8px 10px; font-size: 12.5px; }
+
+      .chat-composer {
+        border: 1px dashed var(--line); border-radius: var(--r-sm);
+        background: var(--surface-hover); padding: 10px 12px;
+      }
+      .chat-composer textarea { border: 0; box-shadow: none; background: transparent; min-height: 72px; padding: 4px 0; }
+      .chat-composer textarea:focus { box-shadow: none; }
+
+      /* Image gallery */
+      .image-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+      .image-gallery img {
+        width: 100%; aspect-ratio: 1; object-fit: contain;
+        border-radius: var(--r-sm); border: 1px solid var(--line-light); background: var(--surface);
+      }
+
+      /* Model grid */
+      .model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+      .model-tile {
+        padding: 14px 16px; border-radius: var(--r-sm);
+        border: 1px solid var(--line-light); background: var(--surface);
+      }
+      .model-tile .model-id { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+      .model-tile .model-meta { margin-top: 6px; font-size: 11.5px; color: var(--ink-soft); }
+
+      /* Settings panel */
+      .settings-block { border: 1px solid var(--line-light); border-radius: var(--r-lg); background: var(--surface); }
+      .settings-hd {
+        display: flex; justify-content: space-between; align-items: center; gap: 10px;
+        padding: 14px 18px 12px; border-bottom: 1px solid var(--line-light);
+      }
+      .settings-hd h3 { font-size: 14px; font-weight: 700; }
+      .settings-bd { padding: 14px 18px; display: grid; gap: 14px; }
+
+      .field-row { display: grid; gap: 4px; }
+      .field-hint { font-size: 11.5px; color: var(--ink-muted); line-height: 1.4; }
+
+      /* Toggle switch */
+      .toggle {
+        width: 34px; height: 20px; border-radius: 99px; flex-shrink: 0;
+        background: var(--line); position: relative; transition: background var(--fast);
+      }
+      .toggle::after {
+        content: ''; position: absolute; width: 14px; height: 14px; border-radius: 99px;
+        left: 3px; top: 3px; background: #fff;
+        transition: transform var(--fast);
+      }
+      .toggle.on { background: var(--accent); }
+      .toggle.on::after { transform: translateX(14px); }
+
+      /* Choice chips */
+      .chip-group { display: flex; flex-wrap: wrap; gap: 5px; }
+      .chip {
+        padding: 4px 12px; font-size: 12px; font-weight: 600; border-radius: 99px;
+        border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
+        transition: all var(--fast);
+      }
+      .chip:hover { border-color: var(--ink-muted); color: var(--ink); }
+      .chip.active { border-color: var(--ink); color: var(--ink); background: var(--accent-soft); }
+
+      /* Empty state */
+      .empty-state {
+        min-height: 120px; display: grid; place-items: center; text-align: center;
+        padding: 28px; color: var(--ink-muted); font-size: 13px;
+        border: 1px dashed var(--line); border-radius: var(--r-sm);
+        background: oklch(99% 0.004 85);
+      }
+
+      /* Upload zone */
+      .upload-zone {
+        min-height: 100px; display: grid; place-items: center; text-align: center;
+        padding: 24px; border: 1px dashed var(--line); border-radius: var(--r-sm);
+        background: oklch(99% 0.004 85); cursor: pointer;
+      }
+      .upload-zone:hover { border-color: var(--ink-muted); background: var(--surface-hover); }
+
+      /* Response block */
+      .response-block { margin-top: 28px; background: var(--surface); border: 1px solid var(--line-light); border-radius: var(--r-lg); }
+      .response-hd {
+        display: flex; justify-content: space-between; align-items: center; gap: 10px;
+        padding: 12px 18px; border-bottom: 1px solid var(--line-light);
+      }
+      .response-hd h3 { font-size: 14px; font-weight: 700; }
+      .response-meta { display: flex; gap: 12px; font-size: 12px; color: var(--ink-soft); font-family: var(--mono); }
+      .response-bd { padding: 16px 18px; }
+      .response-pre {
+        max-height: 320px; overflow: auto; padding: 14px 16px;
+        background: oklch(98.5% 0.004 85); border-radius: var(--r-sm);
+        font-family: var(--mono); font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+      }
+      .response-text { padding: 12px 14px; background: oklch(98.5% 0.004 85); border-radius: var(--r-sm);
+        font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+      .response-actions { display: flex; gap: 6px; margin-top: 12px; }
+
+      /* Audio / Video result */
+      .media-result { width: 100%; border-radius: var(--r-sm); border: 1px solid var(--line-light); }
+
+      /* Console panel */
+      .console-panel {
+        display: grid; grid-template-rows: auto auto auto 1fr;
+        background: var(--console-bg); color: var(--console-text);
+        border-left: 1px solid var(--console-line);
+        min-height: 0; max-height: calc(100vh - 90px);
+        position: sticky; top: 90px;
+      }
+      .console-hd {
+        display: flex; justify-content: space-between; align-items: center; gap: 10px;
+        padding: 14px 18px; border-bottom: 1px solid var(--console-line);
+      }
+      .console-hd h2 { font-size: 14px; font-weight: 700; }
+      .console-stats {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+        padding: 0; border-bottom: 1px solid var(--console-line);
+        background: var(--console-line);
+      }
+      .console-stat {
+        padding: 12px 14px; background: var(--console-bg);
+      }
+      .console-stat dt { font-size: 10px; font-weight: 600; color: var(--console-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+      .console-stat dd { margin-top: 2px; font-family: var(--mono); font-size: 13px; font-weight: 600; }
+
+      .console-payload-section {
+        border-bottom: 1px solid var(--console-line);
+      }
+      .console-payload-toggle {
+        display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 18px;
+        font-size: 12px; font-weight: 600; color: var(--console-muted);
+      }
+      .console-payload-toggle:hover { color: var(--console-text); }
+      .console-payload-body { padding: 0 16px 14px; }
+      .console-payload-body textarea {
+        width: 100%; min-height: 180px; padding: 12px; resize: vertical;
+        font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+        background: var(--console-surface); color: var(--console-text);
+        border: 1px solid var(--console-line); border-radius: var(--r-sm);
+        outline: none;
+      }
+      .console-payload-body textarea:focus { border-color: oklch(55% 0.1 160); }
+
+      .console-log { overflow: auto; padding: 12px 16px 20px; display: grid; gap: 8px; align-content: start; }
+      .console-empty { padding: 32px 20px; text-align: center; color: var(--console-muted); font-size: 12.5px; }
+
+      .log-entry { border: 1px solid var(--console-line); border-radius: var(--r-sm); background: var(--console-surface); }
+      .log-entry summary {
+        cursor: pointer; list-style: none; padding: 10px 14px;
+        display: flex; justify-content: space-between; align-items: center; gap: 10px;
+      }
+      .log-entry summary::-webkit-details-marker { display: none; }
+      .log-method { font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--console-accent); }
+      .log-url { font-family: var(--mono); font-size: 11.5px; color: var(--console-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .log-body { overflow: auto; max-height: 320px; padding: 12px 14px; border-top: 1px solid var(--console-line);
+        font-family: var(--mono); font-size: 10.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+
+      /* Validation error */
+      .alert {
+        padding: 10px 14px; border-radius: var(--r-sm); margin-bottom: 20px;
+        border: 1px solid var(--danger-soft); background: oklch(96% 0.02 20);
+        color: var(--danger); font-size: 12.5px; font-weight: 600;
+      }
+
+      /* 2-col product layout inside surfaces */
+      .product-2col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 20px; align-items: start; }
+
+      @media (max-width: 1100px) {
+        .app-main { grid-template-columns: 1fr; }
+        .console-panel { position: static; max-height: none; min-height: 480px; border-left: 0; border-top: 1px solid var(--console-line); }
+        .product-2col { grid-template-columns: 1fr; }
+        .config-form { grid-template-columns: 1fr !important; }
+      }
+      @media (max-width: 640px) {
+        .app-header { padding: 10px 14px; }
+        .app-tabs { padding: 6px 10px; }
+        .app-content { padding: 0px; }
+        .surface-hd, .surface-bd, .surface-ft { padding-left: 14px; padding-right: 14px; }
+        .chat-msg { grid-template-columns: 1fr; }
+        .console-stats { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="debug-app" class="app" v-cloak>
+      <!-- Header -->
+      <header class="app-header">
+        <div class="app-brand">
+          <img class="app-badge" :src="appBadgeIconHref" alt="" />
+          <span class="app-title">OpenAI v1 Debug</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-left:auto">
+          <span style="font-size:11px;color:var(--ink-muted);font-family:var(--mono)">{{ baseURL }}</span>
+          <span class="dot" :class="apiKey ? 'dot-ok' : 'dot-idle'" :title="apiKey ? 'Key set' : 'No API key'"></span>
+        </div>
+      </header>
+
+      <!-- Tabs -->
+      <nav class="app-tabs">
+        <button
+          v-for="endpoint in endpoints"
+          :key="endpoint.key"
+          class="tab"
+          :class="{ active: endpoint.key === activeEndpointKey }"
+          @click="setActiveEndpoint(endpoint.key)"
+        >{{ endpoint.label }}</button>
+      </nav>
+
+      <!-- Main -->
+      <main class="app-main">
+        <section class="app-content">
+          <!-- Validation error -->
+          <div v-if="validationError" class="alert">{{ validationError }}</div>
+
+          <!-- ── Config ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.CONFIG" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>网关配置</h3>
+                <p class="hd-desc">配置连接信息和本地存储偏好，配置完成后切换到其他 Tab 调试 API</p>
+              </div>
+              <span class="pill" :class="apiKey ? 'pill-ok' : 'pill-neutral'">
+                <span class="dot" :class="apiKey ? 'dot-ok' : 'dot-idle'"></span>
+                {{ apiKey ? '已配置' : '未设置 Key' }}
+              </span>
+            </div>
+            <div class="surface-bd" style="display:grid;gap:20px">
+              <div class="config-form" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <label class="field-row">
+                  <span class="label">Base URL</span>
+                  <input v-model.trim="baseURL" class="input mono" type="url" spellcheck="false" placeholder="http://localhost:8787" />
+                  <span class="field-hint">网关地址，例如 http://localhost:8787 或 https://api.example.com/v1</span>
+                </label>
+                <label class="field-row">
+                  <span class="label">API Key</span>
+                  <input v-model="apiKey" class="input mono" type="password" spellcheck="false" placeholder="sk-..." />
+                  <span class="field-hint">Bearer Token，发送请求时自动添加到 Authorization 头</span>
+                </label>
+              </div>
+              <div style="border-top:1px solid var(--line-light);padding-top:20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <span class="toggle" :class="{ on: persistAuth }"></span>
+                    <input v-model="persistAuth" class="sr-only" type="checkbox" @change="saveSettings" />
+                    <span style="font-size:13px;font-weight:600">保存到本地</span>
+                  </label>
+                  <span style="font-size:11.5px;color:var(--ink-muted)">关闭浏览器后设置仍保留</span>
+                </div>
+                <div style="display:flex;gap:6px">
+                  <button class="btn btn-secondary" @click="clearSavedSettings">清除存储</button>
+                  <button class="btn btn-secondary" @click="loadModelsQuick">刷新模型</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Models ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.MODELS" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>模型浏览器</h3>
+                <p class="hd-desc">网关当前暴露的 model id 列表</p>
+              </div>
+              <button class="btn btn-primary" :disabled="isSending" @click="sendRequest">{{ isSending ? '刷新中' : '刷新' }}</button>
+            </div>
+            <div class="surface-bd">
+              <div v-if="modelListItems.length" class="model-grid">
+                <article v-for="model in modelListItems" :key="model.id" class="model-tile">
+                  <p class="model-id truncate">{{ model.id }}</p>
+                  <p class="model-meta">{{ model.owned_by || 'unknown' }} &middot; {{ model.object || 'model' }}</p>
+                </article>
+              </div>
+              <div v-else class="empty-state">点击刷新加载模型列表</div>
+            </div>
+            <div class="surface-ft">
+              <button class="btn btn-secondary" @click="resetPayload">恢复默认</button>
+              <button class="btn btn-secondary" :disabled="!latestResult" @click="copyLatestResponse">复制响应</button>
+            </div>
+          </div>
+
+          <!-- ── Chat ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.CHAT" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>对话调试</h3>
+                <p class="hd-desc">编辑上下文，直接发送到 <span class="kbd">/chat/completions</span></p>
+              </div>
+              <button class="btn btn-secondary" @click="addChatMessage('system')">+ 系统消息</button>
+            </div>
+            <div class="surface-bd">
+              <div class="chat-list">
+                <article v-for="(message, index) in chatMessages" :key="index" class="chat-msg" :class="message.role">
+                  <select class="input" :value="message.role" @change="updateChatMessage(index, 'role', $event.target.value)">
+                    <option v-for="role in CHAT_ROLES" :key="role" :value="role">{{ role }}</option>
+                  </select>
+                  <textarea class="input" :value="message.content" spellcheck="false" @input="updateChatMessage(index, 'content', $event.target.value)"></textarea>
+                  <button class="btn btn-ghost" @click="removeChatMessage(index)">删除</button>
+                </article>
+              </div>
+            </div>
+            <div class="surface-ft">
+              <div class="chat-composer" style="width:100%">
+                <textarea v-model="composerDraft" class="input" spellcheck="false" placeholder="输入用户消息…" @input="syncPayloadFromFields"></textarea>
+                <div style="display:flex;justify-content:space-between;gap:8px;margin-top:8px">
+                  <button class="btn btn-secondary" @click="addComposerMessage">加入上下文</button>
+                  <div style="display:flex;gap:6px">
+                    <button class="btn btn-secondary" @click="resetPayload">新对话</button>
+                    <button class="btn btn-primary" :disabled="isSending" @click="sendRequest">{{ isSending ? '发送中' : '发送' }}</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Completions ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.COMPLETIONS" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>文本补全</h3>
+                <p class="hd-desc">把 prompt 当成正在写的文档片段，测试 completion 续写效果</p>
+              </div>
+            </div>
+            <div class="surface-bd">
+              <textarea v-model="promptDraft" class="input" style="min-height:180px;font-size:15px;line-height:1.7" spellcheck="false" placeholder="输入需要续写的文本…" @input="syncPayloadFromFields"></textarea>
+            </div>
+            <div class="surface-ft">
+              <button class="btn btn-secondary" @click="resetPayload">恢复模板</button>
+              <button class="btn btn-primary" :disabled="isSending" @click="sendRequest">{{ sendButtonLabel }}</button>
+            </div>
+          </div>
+
+          <!-- ── Responses ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.RESPONSES" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>任务工作区</h3>
+                <p class="hd-desc">用 instructions 和 input 组织 Responses API 任务</p>
+              </div>
+            </div>
+            <div class="surface-bd" style="display:grid;gap:16px">
+              <label>
+                <span class="label">Instructions</span>
+                <textarea v-model="instructionDraft" class="input" spellcheck="false" placeholder="输出风格、角色或约束" @input="syncPayloadFromFields"></textarea>
+              </label>
+              <label>
+                <span class="label">Input</span>
+                <textarea v-model="inputDraft" class="input" style="min-height:160px" spellcheck="false" placeholder="输入任务内容" @input="syncPayloadFromFields"></textarea>
+              </label>
+            </div>
+            <div class="surface-ft">
+              <button class="btn btn-secondary" @click="resetPayload">恢复模板</button>
+              <button class="btn btn-primary" :disabled="isSending" @click="sendRequest">{{ sendButtonLabel }}</button>
+            </div>
+          </div>
+
+          <!-- ── Images ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.IMAGES" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>图片生成工作台</h3>
+                <p class="hd-desc">写 prompt，选尺寸和风格，结果直接进入画廊</p>
+              </div>
+              <button class="btn btn-primary" :disabled="isSending" @click="sendRequest">{{ isSending ? '生成中' : '生成图片' }}</button>
+            </div>
+            <div class="surface-bd">
+              <div class="product-2col">
+                <div style="display:grid;gap:14px">
+                  <label>
+                    <span class="label">Prompt</span>
+                    <textarea v-model="promptDraft" class="input" style="min-height:200px;font-size:15px;line-height:1.7" spellcheck="false" placeholder="描述你想生成的画面…" @input="syncPayloadFromFields"></textarea>
+                  </label>
+                  <div>
+                    <span class="label">Size</span>
+                    <div class="chip-group">
+                      <button v-for="size in imageSizeOptions" :key="size" class="chip" :class="{ active: fieldValues.size === size }" @click="updateFieldValue('size', size)">{{ size }}</button>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div v-if="imageSources.length" class="image-gallery">
+                    <img v-for="src in imageSources" :key="src" :src="src" alt="generated" />
+                  </div>
+                  <div v-else class="empty-state">生成结果将显示在这里</div>
+                </div>
+              </div>
+            </div>
+            <div class="surface-ft">
+              <button class="btn btn-secondary" @click="resetPayload">恢复模板</button>
+              <button class="btn btn-secondary" :disabled="!imageSources.length" @click="copyLatestResponse">复制结果</button>
+            </div>
+          </div>
+
+          <!-- ── Audio Speech ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.AUDIO" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>语音生成</h3>
+                <p class="hd-desc">输入文本，选择音色和语速，直接试听</p>
+              </div>
+            </div>
+            <div class="surface-bd" style="display:grid;gap:16px">
+              <textarea v-model="inputDraft" class="input" style="min-height:180px;font-size:15px;line-height:1.7" spellcheck="false" placeholder="输入需要朗读的文本…" @input="syncPayloadFromFields"></textarea>
+              <audio v-if="audioSource" class="media-result" :src="audioSource" controls></audio>
+              <div v-else class="empty-state">生成的音频将出现在这里</div>
+            </div>
+            <div class="surface-ft">
+              <button class="btn btn-secondary" @click="resetPayload">恢复模板</button>
+              <button class="btn btn-primary" :disabled="isSending" @click="sendRequest">{{ sendButtonLabel }}</button>
+            </div>
+          </div>
+
+          <!-- ── Transcriptions ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.TRANSCRIPTIONS" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>音频转写</h3>
+                <p class="hd-desc">选择音频文件，补充提示词后开始转写</p>
+              </div>
+            </div>
+            <div class="surface-bd" style="display:grid;gap:16px">
+              <label class="upload-zone">
+                <input class="sr-only" type="file" accept="audio/*,video/*" @change="updateSelectedFile($event)" />
+                <span>
+                  <span style="display:block;font-size:15px;font-weight:700">{{ selectedFile ? selectedFile.name : '选择音频文件' }}</span>
+                  <span style="display:block;margin-top:6px;font-size:12.5px;color:var(--ink-soft)">{{ selectedFile ? formatBytes(selectedFile.size) : '支持浏览器可选择的音频或视频文件' }}</span>
+                </span>
+              </label>
+              <textarea v-model="promptDraft" class="input" spellcheck="false" placeholder="可选：输入专有名词、上下文或转写提示" @input="syncPayloadFromFields"></textarea>
+              <div v-if="resultText" class="response-text">{{ resultText }}</div>
+            </div>
+            <div class="surface-ft">
+              <button class="btn btn-secondary" @click="resetPayload">清空</button>
+              <button class="btn btn-primary" :disabled="isSending" @click="sendRequest">{{ sendButtonLabel }}</button>
+            </div>
+          </div>
+
+          <!-- ── Embeddings ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.EMBEDDINGS" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>向量化实验室</h3>
+                <p class="hd-desc">每行一个文本片段，快速比较向量数量和维度</p>
+              </div>
+            </div>
+            <div class="surface-bd" style="display:grid;gap:16px">
+              <textarea v-model="inputDraft" class="input" style="min-height:200px;font-size:14px;line-height:1.7" spellcheck="false" placeholder="每行一个需要向量化的文本" @input="syncPayloadFromFields"></textarea>
+              <div v-if="embeddingSummary" class="response-text" style="font-family:var(--mono)">{{ embeddingSummary }}</div>
+            </div>
+            <div class="surface-ft">
+              <button class="btn btn-secondary" @click="resetPayload">恢复模板</button>
+              <button class="btn btn-primary" :disabled="isSending" @click="sendRequest">{{ sendButtonLabel }}</button>
+            </div>
+          </div>
+
+          <!-- ── Video ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.VIDEO" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>视频故事板</h3>
+                <p class="hd-desc">用镜头描述、时长和尺寸调试视频生成</p>
+              </div>
+            </div>
+            <div class="surface-bd" style="display:grid;gap:16px">
+              <textarea v-model="promptDraft" class="input" style="min-height:200px;font-size:15px;line-height:1.7" spellcheck="false" placeholder="描述镜头、动作、风格和节奏…" @input="syncPayloadFromFields"></textarea>
+              <video v-if="videoSource" class="media-result" :src="videoSource" controls></video>
+              <div v-else class="empty-state">视频结果或 URL 会显示在这里</div>
+            </div>
+            <div class="surface-ft">
+              <button class="btn btn-secondary" @click="resetPayload">恢复模板</button>
+              <button class="btn btn-primary" :disabled="isSending" @click="sendRequest">{{ sendButtonLabel }}</button>
+            </div>
+          </div>
+
+          <!-- ── Settings panel (shared across endpoints) ── -->
+          <div v-if="activeEndpoint.fields.length" style="margin-top:24px">
+            <div class="settings-block">
+              <div class="settings-hd">
+                <h3>生成设置</h3>
+                <button v-if="advancedSettingFields.length" class="btn btn-ghost" style="font-size:12px" @click="showAdvanced = !showAdvanced">{{ showAdvanced ? '收起高级' : '高级选项' }}</button>
+              </div>
+              <div class="settings-bd">
+                <div v-for="field in visibleSettingFields" :key="field.key" class="field-row">
+                  <span class="label">{{ field.label }}<span v-if="field.required" style="color:var(--danger);margin-left:2px">*</span></span>
+
+                  <select v-if="field.kind === FIELD_KINDS.SELECT" class="input" :value="fieldValues[field.key] ?? ''" @change="updateFieldFromEvent(field, $event)">
+                    <option v-for="option in field.options" :key="option" :value="option">{{ option || '空值' }}</option>
+                  </select>
+
+                  <input v-else-if="field.kind === FIELD_KINDS.NUMBER" class="input" type="number" :min="field.min" :max="field.max" :step="field.step || 'any'" :value="fieldValues[field.key] ?? ''" @input="updateFieldFromEvent(field, $event)" />
+
+                  <label v-else-if="field.kind === FIELD_KINDS.BOOLEAN" style="display:flex;align-items:center;gap:10px;min-height:36px;padding:6px 10px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer">
+                    <span class="toggle" :class="{ on: Boolean(fieldValues[field.key]) }"></span>
+                    <input class="sr-only" type="checkbox" :checked="Boolean(fieldValues[field.key])" @change="updateFieldFromEvent(field, $event)" />
+                    <span style="font-size:12.5px;font-weight:600">{{ Boolean(fieldValues[field.key]) ? '开启' : '关闭' }}</span>
+                  </label>
+
+                  <textarea v-else-if="field.kind === FIELD_KINDS.TEXTAREA" class="input" :value="getFieldTextValue(field)" spellcheck="false" :placeholder="field.placeholder" @change="updateFieldFromEvent(field, $event)"></textarea>
+
+                  <input v-else class="input" type="text" :value="fieldValues[field.key] ?? ''" spellcheck="false" :placeholder="field.placeholder" @input="updateFieldFromEvent(field, $event)" />
+
+                  <span class="field-hint">{{ field.help }}</span>
+                </div>
+
+                <div v-if="hiddenComplexFields.length" style="padding:10px 12px;border-radius:var(--r-sm);background:oklch(98.5% 0.004 85);font-size:12px;color:var(--ink-soft)">
+                  复杂参数可在右侧 Payload 中编辑：{{ hiddenComplexFields.join('、') }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Response preview ── -->
+          <div class="response-block">
+            <div class="response-hd">
+              <h3>响应</h3>
+              <div style="display:flex;gap:10px;align-items:center">
+                <span class="response-meta">{{ latestResult ? formatDuration(latestResult.durationMs) : '—' }}</span>
+                <span class="response-meta">{{ latestResult ? formatBytes(latestResult.bodySize) : '—' }}</span>
+                <span :class="['pill', latestResult?.ok ? 'pill-ok' : latestResult ? 'pill-err' : 'pill-neutral']">
+                  <span :class="['dot', latestResult?.ok ? 'dot-ok' : latestResult ? 'dot-err' : 'dot-idle']"></span>
+                  {{ latestResult ? latestResult.status : 'idle' }}
+                </span>
+              </div>
+            </div>
+            <div class="response-bd">
+              <div v-if="resultText" class="response-text" style="margin-bottom:12px">{{ resultText }}</div>
+              <pre class="response-pre">{{ latestResult ? latestResult.bodyText : '发送请求后，响应内容将显示在这里' }}</pre>
+              <div class="response-actions">
+                <button class="btn btn-secondary" :disabled="!latestResult" @click="copyLatestResponse">复制响应</button>
+                <button class="btn btn-secondary" :disabled="!latestConsoleEntry" @click="copyText(latestCurl)">复制 cURL</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Console panel -->
+        <aside class="console-panel">
+          <div class="console-hd">
+            <h2>请求记录</h2>
+            <div style="display:flex;gap:4px">
+              <button class="btn btn-ghost" style="color:var(--console-muted);min-height:28px;padding:4px 10px;font-size:11px" :disabled="!latestConsoleEntry" @click="copyText(latestCurl)">cURL</button>
+              <button class="btn btn-ghost" style="color:var(--console-muted);min-height:28px;padding:4px 10px;font-size:11px" @click="clearConsole">Clear</button>
+            </div>
+          </div>
+
+          <dl class="console-stats">
+            <div class="console-stat">
+              <dt>Endpoint</dt>
+              <dd>{{ activeEndpointKey === ENDPOINT_KEYS.CONFIG ? '—' : activeEndpoint.path }}</dd>
+            </div>
+            <div class="console-stat">
+              <dt>Auth</dt>
+              <dd>{{ apiKey ? maskSecret(apiKey) : 'empty' }}</dd>
+            </div>
+            <div class="console-stat">
+              <dt>Entries</dt>
+              <dd>{{ consoleEntries.length }}</dd>
+            </div>
+          </dl>
+
+          <div class="console-payload-section">
+            <button class="console-payload-toggle" @click="showPayloadEditor = !showPayloadEditor">
+              <span style="transform:rotate(showPayloadEditor ? '90deg' : '0');transition:transform var(--fast);font-size:10px">&#9654;</span>
+              Payload 预览
+            </button>
+            <div v-if="showPayloadEditor" class="console-payload-body">
+              <textarea v-model="payloadText" spellcheck="false" @blur="syncFieldsFromEditor"></textarea>
+              <div style="display:flex;gap:4px;margin-top:8px">
+                <button class="btn btn-ghost" style="color:var(--console-muted);min-height:28px;padding:4px 10px;font-size:11px" @click="syncFieldsFromEditor">应用到左侧</button>
+                <button class="btn btn-ghost" style="color:var(--console-muted);min-height:28px;padding:4px 10px;font-size:11px" @click="copyText(payloadText)">复制</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="console-log">
+            <div v-if="!consoleEntries.length" class="console-empty">发送请求后，记录将显示在这里</div>
+            <details v-for="entry in consoleEntries" :key="entry.id" class="log-entry" open>
+              <summary>
+                <div style="min-width:0">
+                  <span class="log-method">{{ entry.request.method }}</span>
+                  <span class="log-url" style="margin-left:6px">{{ entry.request.url }}</span>
+                </div>
+                <span :class="['pill', entry.result.ok ? 'pill-ok' : 'pill-err']" style="font-size:10.5px;flex-shrink:0">
+                  {{ entry.result.status }} / {{ formatDuration(entry.result.durationMs) }}
+                </span>
+              </summary>
+              <pre class="log-body">{{ formatJSON(entry) }}</pre>
+            </details>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <script>
+      const FIELD_KINDS = {
+        TEXT: 'text',
+        TEXTAREA: 'textarea',
+        NUMBER: 'number',
+        BOOLEAN: 'boolean',
+        SELECT: 'select',
+        JSON: 'json',
+        FILE: 'file',
+      };
+
+      const BODY_MODES = {
+        NONE: 'none',
+        JSON: 'json',
+        MULTIPART: 'multipart',
+      };
+
+      const RESULT_TYPES = {
+        JSON: 'json',
+        TEXT: 'text',
+        IMAGE: 'image',
+        AUDIO: 'audio',
+        TRANSCRIPT: 'transcript',
+        EMBEDDING: 'embedding',
+        VIDEO: 'video',
+      };
+
+      const ENDPOINT_KEYS = {
+        CONFIG: 'config',
+        MODELS: 'models',
+        CHAT: 'chat_completions',
+        COMPLETIONS: 'completions',
+        RESPONSES: 'responses',
+        IMAGES: 'image_generations',
+        AUDIO: 'audio_speech',
+        TRANSCRIPTIONS: 'audio_transcriptions',
+        EMBEDDINGS: 'embeddings',
+        VIDEO: 'video_generations',
+      };
+
+      const CHAT_ROLES = ['system', 'user', 'assistant', 'tool'];
+      const PRODUCT_MAIN_FIELD_KEYS = new Set(['messages', 'prompt', 'input', 'instructions', 'file', 'suffix']);
+      const PRODUCT_ACTION_LABELS = {
+        [ENDPOINT_KEYS.MODELS]: '刷新模型',
+        [ENDPOINT_KEYS.CHAT]: '发送',
+        [ENDPOINT_KEYS.COMPLETIONS]: '续写',
+        [ENDPOINT_KEYS.RESPONSES]: '运行任务',
+        [ENDPOINT_KEYS.IMAGES]: '生成图片',
+        [ENDPOINT_KEYS.AUDIO]: '生成语音',
+        [ENDPOINT_KEYS.TRANSCRIPTIONS]: '开始转写',
+        [ENDPOINT_KEYS.EMBEDDINGS]: '生成向量',
+        [ENDPOINT_KEYS.VIDEO]: '生成视频',
+      };
+
+      const HEADER_NAMES = {
+        AUTHORIZATION: 'Authorization',
+        CONTENT_TYPE: 'Content-Type',
+      };
+
+      const STORAGE_KEYS = {
+        BASE_URL: 'open-ai-gateway.debug.baseURL',
+        API_KEY: 'open-ai-gateway.debug.apiKey',
+        PERSIST_AUTH: 'open-ai-gateway.debug.persistAuth',
+      };
+
+      const DOM_IDS = {
+        APP_BADGE_ICON: 'app-badge-icon',
+      };
+
+      const REQUEST_LIMITS = {
+        CONSOLE_ENTRIES: 40,
+        JSON_INDENT: 2,
+        SECRET_HEAD: 5,
+        SECRET_TAIL: 4,
+      };
+
+      const VALUE_EMPTY_MARKERS = new Set(['', null, undefined]);
+      const AUDIO_CONTENT_PREFIX = 'audio/';
+      const VIDEO_CONTENT_PREFIX = 'video/';
+      const TEXT_CONTENT_PREFIX = 'text/';
+      const JSON_CONTENT_MARKER = 'json';
+      const DEFAULT_CHAT_MODEL = 'gpt-5.5';
+      const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
+      const DEFAULT_AUDIO_MODEL = 'tts-1';
+      const DEFAULT_TRANSCRIBE_MODEL = 'whisper';
+      const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small';
+      const DEFAULT_VIDEO_MODEL = 'ltx-2';
+
+      const getAppBadgeIconHref = () => document.getElementById(DOM_IDS.APP_BADGE_ICON)?.href || '';
+
+      const makeField = (key, label, kind, help, options = {}) => ({
+        key,
+        label,
+        kind,
+        help,
+        ...options,
+      });
+
+      const FIELD_DEFINITIONS = {
+        model: makeField('model', 'Model', FIELD_KINDS.TEXT, '网关模型标识，可填 code 或 alias。', { required: true, placeholder: DEFAULT_CHAT_MODEL }),
+        messages: makeField('messages', 'Messages', FIELD_KINDS.JSON, '聊天消息数组，兼容 role/content/tool_calls 等结构。', { required: true }),
+        prompt: makeField('prompt', 'Prompt', FIELD_KINDS.TEXTAREA, '生成或补全提示词。', { required: true }),
+        input: makeField('input', 'Input', FIELD_KINDS.JSON, '字符串、字符串数组或 Responses 输入对象。', { required: true }),
+        instructions: makeField('instructions', 'Instructions', FIELD_KINDS.TEXTAREA, 'Responses 或音频生成的系统级指令。'),
+        temperature: makeField('temperature', 'Temperature', FIELD_KINDS.NUMBER, '采样温度，通常为 0 到 2。', { min: 0, max: 2, step: 0.1 }),
+        top_p: makeField('top_p', 'Top P', FIELD_KINDS.NUMBER, '核采样概率，通常为 0 到 1。', { min: 0, max: 1, step: 0.05 }),
+        n: makeField('n', 'N', FIELD_KINDS.NUMBER, '返回结果数量。', { min: 1, max: 10, step: 1 }),
+        stream: makeField('stream', 'Stream', FIELD_KINDS.BOOLEAN, '是否请求流式响应。'),
+        stop: makeField('stop', 'Stop', FIELD_KINDS.JSON, '停止序列，支持字符串或字符串数组。', { advanced: true }),
+        max_tokens: makeField('max_tokens', 'Max Tokens', FIELD_KINDS.NUMBER, 'Chat/Completions 最大输出 token。', { min: 1, step: 1 }),
+        max_completion_tokens: makeField('max_completion_tokens', 'Max Completion Tokens', FIELD_KINDS.NUMBER, '部分聊天模型使用的最大 completion token。', { min: 1, step: 1, advanced: true }),
+        max_output_tokens: makeField('max_output_tokens', 'Max Output Tokens', FIELD_KINDS.NUMBER, 'Responses 最大输出 token。', { min: 1, step: 1 }),
+        presence_penalty: makeField('presence_penalty', 'Presence Penalty', FIELD_KINDS.NUMBER, '主题重复惩罚，范围通常为 -2 到 2。', { min: -2, max: 2, step: 0.1, advanced: true }),
+        frequency_penalty: makeField('frequency_penalty', 'Frequency Penalty', FIELD_KINDS.NUMBER, '词频重复惩罚，范围通常为 -2 到 2。', { min: -2, max: 2, step: 0.1, advanced: true }),
+        logit_bias: makeField('logit_bias', 'Logit Bias', FIELD_KINDS.JSON, 'token 偏置对象。', { advanced: true }),
+        user: makeField('user', 'User', FIELD_KINDS.TEXT, '终端用户标识，用于上游风控或审计。', { advanced: true }),
+        response_format: makeField('response_format', 'Response Format', FIELD_KINDS.TEXT, 'JSON mode、图片格式或转写格式，按 endpoint 填写。'),
+        tools: makeField('tools', 'Tools', FIELD_KINDS.JSON, '工具定义数组。', { advanced: true }),
+        tool_choice: makeField('tool_choice', 'Tool Choice', FIELD_KINDS.JSON, '工具选择策略，支持 auto、none 或对象。', { advanced: true }),
+        parallel_tool_calls: makeField('parallel_tool_calls', 'Parallel Tool Calls', FIELD_KINDS.BOOLEAN, '是否允许并行工具调用。', { advanced: true }),
+        seed: makeField('seed', 'Seed', FIELD_KINDS.NUMBER, '尽力保持可复现输出。', { step: 1, advanced: true }),
+        logprobs: makeField('logprobs', 'Logprobs', FIELD_KINDS.BOOLEAN, '是否返回 token 概率。', { advanced: true }),
+        top_logprobs: makeField('top_logprobs', 'Top Logprobs', FIELD_KINDS.NUMBER, '返回的 top token 概率数量。', { min: 0, step: 1, advanced: true }),
+        suffix: makeField('suffix', 'Suffix', FIELD_KINDS.TEXTAREA, '文本补全后缀。', { advanced: true }),
+        echo: makeField('echo', 'Echo', FIELD_KINDS.BOOLEAN, '文本补全是否回显 prompt。', { advanced: true }),
+        best_of: makeField('best_of', 'Best Of', FIELD_KINDS.NUMBER, '服务端生成候选数量。', { min: 1, step: 1, advanced: true }),
+        previous_response_id: makeField('previous_response_id', 'Previous Response ID', FIELD_KINDS.TEXT, 'Responses 多轮上下文 ID。', { advanced: true }),
+        reasoning: makeField('reasoning', 'Reasoning', FIELD_KINDS.JSON, 'Responses 推理参数对象。', { advanced: true }),
+        text: makeField('text', 'Text', FIELD_KINDS.JSON, 'Responses 文本输出配置。', { advanced: true }),
+        truncation: makeField('truncation', 'Truncation', FIELD_KINDS.SELECT, 'Responses 上下文截断策略。', { options: ['disabled', 'auto'], advanced: true }),
+        size: makeField('size', 'Size', FIELD_KINDS.SELECT, '图片或视频尺寸。', { options: ['1024x1024', '1024x1536', '1536x1024', '512x512', '256x256', '1792x1024', '1024x1792'] }),
+        quality: makeField('quality', 'Quality', FIELD_KINDS.SELECT, '图片质量参数。', { options: ['auto', 'standard', 'hd', 'low', 'medium', 'high'] }),
+        style: makeField('style', 'Style', FIELD_KINDS.SELECT, '图片风格参数。', { options: ['', 'vivid', 'natural'] }),
+        background: makeField('background', 'Background', FIELD_KINDS.SELECT, '图片背景，支持 transparent 或 auto。', { options: ['', 'auto', 'transparent', 'opaque'], advanced: true }),
+        moderation: makeField('moderation', 'Moderation', FIELD_KINDS.SELECT, '图片安全过滤级别。', { options: ['', 'auto', 'low'], advanced: true }),
+        output_format: makeField('output_format', 'Output Format', FIELD_KINDS.SELECT, '图片输出格式。', { options: ['', 'png', 'jpeg', 'webp'], advanced: true }),
+        output_compression: makeField('output_compression', 'Output Compression', FIELD_KINDS.NUMBER, '图片压缩质量，通常为 0 到 100。', { min: 0, max: 100, step: 1, advanced: true }),
+        voice: makeField('voice', 'Voice', FIELD_KINDS.SELECT, '语音生成音色。', { required: true, options: ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'] }),
+        speed: makeField('speed', 'Speed', FIELD_KINDS.NUMBER, '语速倍率，通常为 0.25 到 4。', { min: 0.25, max: 4, step: 0.05 }),
+        file: makeField('file', 'File', FIELD_KINDS.FILE, '音频转写文件。', { required: true }),
+        language: makeField('language', 'Language', FIELD_KINDS.TEXT, '输入音频语言 ISO-639-1 代码。', { placeholder: 'zh', advanced: true }),
+        timestamp_granularities: makeField('timestamp_granularities', 'Timestamp Granularities', FIELD_KINDS.JSON, '转写时间戳粒度数组。', { advanced: true }),
+        encoding_format: makeField('encoding_format', 'Encoding Format', FIELD_KINDS.SELECT, '向量返回格式。', { options: ['float', 'base64'] }),
+        dimensions: makeField('dimensions', 'Dimensions', FIELD_KINDS.NUMBER, '向量维度，只有部分 embedding 模型支持。', { min: 1, step: 1 }),
+        duration: makeField('duration', 'Duration', FIELD_KINDS.NUMBER, '视频时长，按上游兼容接口支持范围填写。', { min: 1, step: 1 }),
+      };
+
+      const CHAT_FIELDS = [
+        FIELD_DEFINITIONS.model,
+        FIELD_DEFINITIONS.messages,
+        FIELD_DEFINITIONS.temperature,
+        FIELD_DEFINITIONS.top_p,
+        FIELD_DEFINITIONS.max_tokens,
+        FIELD_DEFINITIONS.stream,
+        FIELD_DEFINITIONS.response_format,
+        FIELD_DEFINITIONS.n,
+        FIELD_DEFINITIONS.stop,
+        FIELD_DEFINITIONS.tools,
+        FIELD_DEFINITIONS.tool_choice,
+        FIELD_DEFINITIONS.parallel_tool_calls,
+        FIELD_DEFINITIONS.max_completion_tokens,
+        FIELD_DEFINITIONS.presence_penalty,
+        FIELD_DEFINITIONS.frequency_penalty,
+        FIELD_DEFINITIONS.logit_bias,
+        FIELD_DEFINITIONS.user,
+        FIELD_DEFINITIONS.seed,
+        FIELD_DEFINITIONS.logprobs,
+        FIELD_DEFINITIONS.top_logprobs,
+      ];
+
+      const COMPLETION_FIELDS = [
+        FIELD_DEFINITIONS.model,
+        FIELD_DEFINITIONS.prompt,
+        FIELD_DEFINITIONS.suffix,
+        FIELD_DEFINITIONS.max_tokens,
+        FIELD_DEFINITIONS.temperature,
+        FIELD_DEFINITIONS.top_p,
+        FIELD_DEFINITIONS.n,
+        FIELD_DEFINITIONS.stream,
+        FIELD_DEFINITIONS.logprobs,
+        FIELD_DEFINITIONS.echo,
+        FIELD_DEFINITIONS.stop,
+        FIELD_DEFINITIONS.presence_penalty,
+        FIELD_DEFINITIONS.frequency_penalty,
+        FIELD_DEFINITIONS.best_of,
+        FIELD_DEFINITIONS.logit_bias,
+        FIELD_DEFINITIONS.user,
+      ];
+
+      const RESPONSE_FIELDS = [
+        FIELD_DEFINITIONS.model,
+        FIELD_DEFINITIONS.input,
+        FIELD_DEFINITIONS.instructions,
+        FIELD_DEFINITIONS.previous_response_id,
+        FIELD_DEFINITIONS.stream,
+        FIELD_DEFINITIONS.tools,
+        FIELD_DEFINITIONS.tool_choice,
+        FIELD_DEFINITIONS.parallel_tool_calls,
+        FIELD_DEFINITIONS.truncation,
+        FIELD_DEFINITIONS.max_output_tokens,
+        FIELD_DEFINITIONS.reasoning,
+        FIELD_DEFINITIONS.text,
+        FIELD_DEFINITIONS.temperature,
+        FIELD_DEFINITIONS.top_p,
+        FIELD_DEFINITIONS.user,
+      ];
+
+      const IMAGE_FIELDS = [
+        FIELD_DEFINITIONS.model,
+        FIELD_DEFINITIONS.prompt,
+        FIELD_DEFINITIONS.n,
+        FIELD_DEFINITIONS.size,
+        FIELD_DEFINITIONS.quality,
+        FIELD_DEFINITIONS.style,
+        FIELD_DEFINITIONS.response_format,
+        FIELD_DEFINITIONS.background,
+        FIELD_DEFINITIONS.moderation,
+        FIELD_DEFINITIONS.output_format,
+        FIELD_DEFINITIONS.output_compression,
+        FIELD_DEFINITIONS.user,
+      ];
+
+      const AUDIO_SPEECH_FIELDS = [
+        FIELD_DEFINITIONS.model,
+        FIELD_DEFINITIONS.input,
+        FIELD_DEFINITIONS.voice,
+        FIELD_DEFINITIONS.response_format,
+        FIELD_DEFINITIONS.speed,
+        FIELD_DEFINITIONS.instructions,
+      ];
+
+      const TRANSCRIPTION_FIELDS = [
+        FIELD_DEFINITIONS.model,
+        FIELD_DEFINITIONS.file,
+        FIELD_DEFINITIONS.prompt,
+        FIELD_DEFINITIONS.response_format,
+        FIELD_DEFINITIONS.temperature,
+        FIELD_DEFINITIONS.language,
+        FIELD_DEFINITIONS.timestamp_granularities,
+      ];
+
+      const EMBEDDING_FIELDS = [
+        FIELD_DEFINITIONS.model,
+        FIELD_DEFINITIONS.input,
+        FIELD_DEFINITIONS.encoding_format,
+        FIELD_DEFINITIONS.dimensions,
+        FIELD_DEFINITIONS.user,
+      ];
+
+      const VIDEO_FIELDS = [
+        FIELD_DEFINITIONS.model,
+        FIELD_DEFINITIONS.prompt,
+        FIELD_DEFINITIONS.size,
+        FIELD_DEFINITIONS.duration,
+        FIELD_DEFINITIONS.n,
+        FIELD_DEFINITIONS.response_format,
+        FIELD_DEFINITIONS.user,
+      ];
+
+      const DEBUG_ENDPOINTS = [
+        {
+          key: 'config',
+          label: '配置',
+          shortLabel: '配置',
+          method: '',
+          path: '',
+          bodyMode: BODY_MODES.NONE,
+          resultType: RESULT_TYPES.JSON,
+          description: '配置网关 Base URL 和 API Key，设置本地存储偏好。',
+          fields: [],
+          defaultPayload: {},
+        },
+        {
+          key: 'models',
+          label: '模型列表',
+          shortLabel: '模型',
+          method: 'GET',
+          path: '/v1/models',
+          bodyMode: BODY_MODES.NONE,
+          resultType: RESULT_TYPES.JSON,
+          description: '查看网关当前公开的模型 code 和 alias。',
+          fields: [],
+          defaultPayload: {},
+        },
+        {
+          key: 'chat_completions',
+          label: '聊天',
+          shortLabel: '聊天',
+          method: 'POST',
+          path: '/v1/chat/completions',
+          bodyMode: BODY_MODES.JSON,
+          resultType: RESULT_TYPES.TEXT,
+          description: '调试 messages、工具调用、JSON mode 和流式开关。',
+          fields: CHAT_FIELDS,
+          defaultPayload: {
+            model: DEFAULT_CHAT_MODEL,
+            messages: [{ role: 'user', content: '你好，请用一句话介绍当前网关。' }],
+            temperature: 0.7,
+            stream: false,
+          },
+        },
+        {
+          key: 'completions',
+          label: '文本补全',
+          shortLabel: '补全',
+          method: 'POST',
+          path: '/v1/completions',
+          bodyMode: BODY_MODES.JSON,
+          resultType: RESULT_TYPES.TEXT,
+          description: '调试 legacy completions 兼容请求。',
+          fields: COMPLETION_FIELDS,
+          defaultPayload: {
+            model: DEFAULT_CHAT_MODEL,
+            prompt: 'Complete this sentence: The gateway is',
+            max_tokens: 64,
+            temperature: 0.7,
+            stream: false,
+          },
+        },
+        {
+          key: 'responses',
+          label: 'Responses',
+          shortLabel: 'Responses',
+          method: 'POST',
+          path: '/v1/responses',
+          bodyMode: BODY_MODES.JSON,
+          resultType: RESULT_TYPES.TEXT,
+          description: '调试 Responses API 的 input、instructions 和工具参数。',
+          fields: RESPONSE_FIELDS,
+          defaultPayload: {
+            model: DEFAULT_CHAT_MODEL,
+            input: '用一句话返回健康检查结果。',
+            instructions: '输出要简短。',
+            stream: false,
+          },
+        },
+        {
+          key: 'image_generations',
+          label: '图片生成',
+          shortLabel: '图片',
+          method: 'POST',
+          path: '/v1/images/generations',
+          bodyMode: BODY_MODES.JSON,
+          resultType: RESULT_TYPES.IMAGE,
+          description: '调试图片 prompt、尺寸、质量、格式和数量。',
+          fields: IMAGE_FIELDS,
+          defaultPayload: {
+            model: DEFAULT_IMAGE_MODEL,
+            prompt: 'A clean product screenshot of an API debugging workbench, realistic UI, neutral background',
+            n: 1,
+            size: '1024x1024',
+            quality: 'auto',
+            response_format: 'url',
+          },
+        },
+        {
+          key: 'audio_speech',
+          label: '语音生成',
+          shortLabel: '语音',
+          method: 'POST',
+          path: '/v1/audio/speech',
+          bodyMode: BODY_MODES.JSON,
+          resultType: RESULT_TYPES.AUDIO,
+          description: '调试 TTS 文本、音色、格式和语速。',
+          fields: AUDIO_SPEECH_FIELDS,
+          defaultPayload: {
+            model: DEFAULT_AUDIO_MODEL,
+            input: 'Open AI Gateway debug request completed.',
+            voice: 'alloy',
+            response_format: 'mp3',
+            speed: 1,
+          },
+        },
+        {
+          key: 'audio_transcriptions',
+          label: '音频转写',
+          shortLabel: '转写',
+          method: 'POST',
+          path: '/v1/audio/transcriptions',
+          bodyMode: BODY_MODES.MULTIPART,
+          resultType: RESULT_TYPES.TRANSCRIPT,
+          description: '调试 multipart 音频上传、语言和时间戳粒度。',
+          fields: TRANSCRIPTION_FIELDS,
+          defaultPayload: {
+            model: DEFAULT_TRANSCRIBE_MODEL,
+            response_format: 'json',
+            temperature: 0,
+          },
+        },
+        {
+          key: 'embeddings',
+          label: '向量化',
+          shortLabel: '向量',
+          method: 'POST',
+          path: '/v1/embeddings',
+          bodyMode: BODY_MODES.JSON,
+          resultType: RESULT_TYPES.EMBEDDING,
+          description: '调试文本向量化输入、编码格式和维度。',
+          fields: EMBEDDING_FIELDS,
+          defaultPayload: {
+            model: DEFAULT_EMBEDDING_MODEL,
+            input: ['Open AI Gateway', 'debug request'],
+            encoding_format: 'float',
+          },
+        },
+        {
+          key: 'video_generations',
+          label: '视频生成',
+          shortLabel: '视频',
+          method: 'POST',
+          path: '/v1/video/generations',
+          bodyMode: BODY_MODES.JSON,
+          resultType: RESULT_TYPES.VIDEO,
+          description: '调试视频 prompt、尺寸、时长和返回格式。',
+          fields: VIDEO_FIELDS,
+          defaultPayload: {
+            model: DEFAULT_VIDEO_MODEL,
+            prompt: 'A focused developer reviewing an API console on a clean workstation',
+            size: '1024x1024',
+            duration: 4,
+            n: 1,
+          },
+        },
+      ];
+
+      function getDefaultBaseURL() {
+        if (window.location.protocol === 'file:') return 'http://localhost:8787';
+        return window.location.origin || 'http://localhost:8787';
+      }
+
+      function normalizeBaseURL(value) {
+        const fallback = getDefaultBaseURL();
+        const raw = String(value || fallback).trim() || fallback;
+        return raw.replace(/\/+$/, '');
+      }
+
+      function joinURL(baseURL, path) {
+        const normalizedBase = normalizeBaseURL(baseURL);
+        const baseURLObject = new URL(normalizedBase);
+        const basePath = baseURLObject.pathname.replace(/\/+$/, '');
+        const endpointPath = path.startsWith('/v1') && basePath.endsWith('/v1') ? path.slice('/v1'.length) || '/' : path;
+        const cleanEndpointPath = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
+        return `${normalizedBase}${cleanEndpointPath}`;
+      }
+
+      function maskSecret(value) {
+        const secret = String(value || '');
+        if (!secret) return '';
+        if (secret.length <= REQUEST_LIMITS.SECRET_HEAD + REQUEST_LIMITS.SECRET_TAIL) return '*'.repeat(secret.length);
+        return `${secret.slice(0, REQUEST_LIMITS.SECRET_HEAD)}...${secret.slice(-REQUEST_LIMITS.SECRET_TAIL)}`;
+      }
+
+      function cloneDefaultPayload(endpoint) {
+        return JSON.parse(JSON.stringify(endpoint.defaultPayload || {}));
+      }
+
+      function stringifyPayload(payload) {
+        return JSON.stringify(payload || {}, null, REQUEST_LIMITS.JSON_INDENT);
+      }
+
+      function parsePayloadText(payloadText) {
+        try {
+          const parsed = JSON.parse(payloadText || '{}');
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            return { ok: false, error: '请求体必须是 JSON object。' };
+          }
+          return { ok: true, payload: parsed };
+        } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
+      }
+
+      function shouldKeepValue(value) {
+        if (VALUE_EMPTY_MARKERS.has(value)) return false;
+        if (Array.isArray(value)) return value.length > 0;
+        return true;
+      }
+
+      function formatJSON(value) {
+        if (typeof value === 'string') return value;
+        return JSON.stringify(value ?? {}, null, REQUEST_LIMITS.JSON_INDENT);
+      }
+
+      function headersToObject(headers) {
+        const output = {};
+        headers.forEach((value, key) => {
+          output[key] = value;
+        });
+        return output;
+      }
+
+      function buildHeaders(apiKey, bodyMode) {
+        const headers = new Headers();
+        if (apiKey) headers.set(HEADER_NAMES.AUTHORIZATION, `Bearer ${apiKey}`);
+        if (bodyMode === BODY_MODES.JSON) headers.set(HEADER_NAMES.CONTENT_TYPE, 'application/json');
+        return headers;
+      }
+
+      function buildMultipartBody(endpoint, payload, file) {
+        const form = new FormData();
+        Object.entries(payload || {}).forEach(([key, value]) => {
+          if (!shouldKeepValue(value)) return;
+          if (Array.isArray(value)) {
+            value.forEach((item) => form.append(`${key}[]`, typeof item === 'object' ? JSON.stringify(item) : String(item)));
+            return;
+          }
+          form.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+        });
+        if (file) form.set('file', file);
+        return form;
+      }
+
+      function buildMultipartPreview(payload, file) {
+        return {
+          ...payload,
+          file: file ? { name: file.name, type: file.type, size: file.size } : null,
+        };
+      }
+
+      function buildRequestSnapshot(url, endpoint, headers, bodyPreview) {
+        const headersObject = headersToObject(headers);
+        if (headersObject.authorization) headersObject.authorization = `Bearer ${maskSecret(headersObject.authorization.replace(/^Bearer\s+/i, ''))}`;
+        return {
+          method: endpoint.method,
+          url,
+          headers: headersObject,
+          bodyPreview,
+        };
+      }
+
+      function buildRequestInit(endpoint, payload, apiKey, file) {
+        const headers = buildHeaders(apiKey, endpoint.bodyMode);
+        const init = { method: endpoint.method, headers };
+        if (endpoint.bodyMode === BODY_MODES.JSON) {
+          init.body = JSON.stringify(payload || {});
+        }
+        if (endpoint.bodyMode === BODY_MODES.MULTIPART) {
+          init.body = buildMultipartBody(endpoint, payload, file);
+        }
+        return init;
+      }
+
+      function createConsoleId() {
+        return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      }
+
+      function formatDuration(ms) {
+        const value = Number(ms) || 0;
+        return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`;
+      }
+
+      function formatBytes(bytes) {
+        const value = Number(bytes) || 0;
+        if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)} MB`;
+        if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+        return `${value} B`;
+      }
+
+      function getResultText(result) {
+        const body = result?.bodyJson;
+        if (!body || typeof body !== 'object') return '';
+        if (typeof body.output_text === 'string') return body.output_text;
+        if (typeof body.text === 'string') return body.text;
+        const firstChoice = Array.isArray(body.choices) ? body.choices[0] : null;
+        if (firstChoice?.message?.content) return Array.isArray(firstChoice.message.content) ? firstChoice.message.content.map((item) => item.text || item.content || '').join('\n') : String(firstChoice.message.content);
+        if (typeof firstChoice?.text === 'string') return firstChoice.text;
+        if (Array.isArray(body.output)) {
+          return body.output
+            .flatMap((item) => Array.isArray(item.content) ? item.content : [])
+            .map((item) => item.text || item.output_text || '')
+            .filter(Boolean)
+            .join('\n');
+        }
+        return '';
+      }
+
+      function getImageSources(result) {
+        const body = result?.bodyJson;
+        const data = Array.isArray(body?.data) ? body.data : [];
+        return data
+          .map((item) => item.url || (item.b64_json ? `data:image/png;base64,${item.b64_json}` : ''))
+          .filter(Boolean);
+      }
+
+      function getAudioSource(result) {
+        if (!result) return '';
+        if (result.mediaURL && result.contentType.startsWith(AUDIO_CONTENT_PREFIX)) return result.mediaURL;
+        const body = result.bodyJson;
+        if (typeof body?.url === 'string') return body.url;
+        const first = Array.isArray(body?.data) ? body.data[0] : null;
+        return first?.url || '';
+      }
+
+      function getVideoSource(result) {
+        if (!result) return '';
+        if (result.mediaURL && result.contentType.startsWith(VIDEO_CONTENT_PREFIX)) return result.mediaURL;
+        const body = result.bodyJson;
+        const first = Array.isArray(body?.data) ? body.data[0] : null;
+        if (first?.url) return first.url;
+        if (first?.b64_json) return `data:video/mp4;base64,${first.b64_json}`;
+        return '';
+      }
+
+      function getEmbeddingSummary(result) {
+        const data = Array.isArray(result?.bodyJson?.data) ? result.bodyJson.data : [];
+        if (!data.length) return '';
+        const firstEmbedding = Array.isArray(data[0]?.embedding) ? data[0].embedding : [];
+        return `vectors=${data.length}, dimensions=${firstEmbedding.length}`;
+      }
+
+      function renderCurlCommand(entry) {
+        if (!entry) return '';
+        const headerArgs = Object.entries(entry.request.headers)
+          .map(([key, value]) => `  -H '${key}: ${String(value).replaceAll("'", "'\\''")}'`)
+          .join(' \\\n');
+        const body = entry.request.bodyPreview && Object.keys(entry.request.bodyPreview).length
+          ? ` \\\n  --data '${JSON.stringify(entry.request.bodyPreview).replaceAll("'", "'\\''")}'`
+          : '';
+        return [`curl -X ${entry.request.method} '${entry.request.url}'`, headerArgs, body].filter(Boolean).join(' \\\n');
+      }
+
+      function createNetworkErrorResult(error, startedAt) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          ok: false,
+          status: 0,
+          statusText: 'Network Error',
+          durationMs: Math.max(0, performance.now() - startedAt),
+          contentType: 'text/plain',
+          mediaURL: '',
+          bodySize: message.length,
+          headers: {},
+          bodyText: message,
+          bodyJson: null,
+        };
+      }
+
+      Vue.createApp({
+        data() {
+          return {
+            FIELD_KINDS,
+            ENDPOINT_KEYS,
+            CHAT_ROLES,
+            appBadgeIconHref: getAppBadgeIconHref(),
+            endpoints: DEBUG_ENDPOINTS,
+            baseURL: getDefaultBaseURL(),
+            apiKey: '',
+            persistAuth: false,
+            activeEndpointKey: 'config',
+            payloadText: '{}',
+            fieldValues: {},
+            chatMessages: [],
+            composerDraft: '',
+            promptDraft: '',
+            inputDraft: '',
+            instructionDraft: '',
+            selectedFile: null,
+            isSending: false,
+            validationError: '',
+            latestResult: null,
+            consoleEntries: [],
+            showAdvanced: false,
+            showPayloadEditor: true,
+          };
+        },
+        computed: {
+          activeEndpoint() {
+            return this.endpoints.find((endpoint) => endpoint.key === this.activeEndpointKey) || this.endpoints[0];
+          },
+          primaryFields() {
+            return this.activeEndpoint.fields.filter((field) => !field.advanced);
+          },
+          advancedFields() {
+            return this.activeEndpoint.fields.filter((field) => field.advanced);
+          },
+          baseSettingFields() {
+            return this.activeEndpoint.fields.filter((field) => !PRODUCT_MAIN_FIELD_KEYS.has(field.key) && field.kind !== FIELD_KINDS.JSON);
+          },
+          visibleSettingFields() {
+            return this.baseSettingFields.filter((field) => !field.advanced || this.showAdvanced);
+          },
+          advancedSettingFields() {
+            return this.baseSettingFields.filter((field) => field.advanced);
+          },
+          hiddenComplexFields() {
+            return this.activeEndpoint.fields
+              .filter((field) => !PRODUCT_MAIN_FIELD_KEYS.has(field.key) && field.kind === FIELD_KINDS.JSON)
+              .map((field) => field.label);
+          },
+          imageSizeOptions() {
+            return FIELD_DEFINITIONS.size.options;
+          },
+          sendButtonLabel() {
+            if (this.isSending) return '处理中';
+            return PRODUCT_ACTION_LABELS[this.activeEndpointKey] || '发送请求';
+          },
+          modelListItems() {
+            const data = this.latestResult?.bodyJson?.data;
+            return Array.isArray(data) ? data : [];
+          },
+          latestConsoleEntry() {
+            return this.consoleEntries[0] || null;
+          },
+          latestCurl() {
+            return renderCurlCommand(this.latestConsoleEntry);
+          },
+          resultText() {
+            return getResultText(this.latestResult);
+          },
+          imageSources() {
+            return getImageSources(this.latestResult);
+          },
+          audioSource() {
+            return getAudioSource(this.latestResult);
+          },
+          videoSource() {
+            return getVideoSource(this.latestResult);
+          },
+          embeddingSummary() {
+            return getEmbeddingSummary(this.latestResult);
+          },
+        },
+        mounted() {
+          this.loadSettings();
+          this.resetPayload();
+        },
+        methods: {
+          getDefaultBaseURL,
+          normalizeBaseURL,
+          joinURL,
+          maskSecret,
+          formatJSON,
+          formatDuration,
+          formatBytes,
+          getActiveEndpoint() {
+            return this.endpoints.find((endpoint) => endpoint.key === this.activeEndpointKey) || this.endpoints[0];
+          },
+          setActiveEndpoint(key) {
+            this.activeEndpointKey = key;
+            this.validationError = '';
+            this.showAdvanced = false;
+            this.resetPayload();
+          },
+          cloneDefaultPayload(endpoint) {
+            return cloneDefaultPayload(endpoint);
+          },
+          stringifyPayload(payload) {
+            return stringifyPayload(payload);
+          },
+          parsePayloadText(payloadText) {
+            return parsePayloadText(payloadText);
+          },
+          getFieldTextValue(field) {
+            const value = this.fieldValues[field.key];
+            if (field.kind === FIELD_KINDS.JSON) {
+              return value === undefined ? '' : JSON.stringify(value, null, REQUEST_LIMITS.JSON_INDENT);
+            }
+            return value === undefined || value === null ? '' : String(value);
+          },
+          coerceFieldValue(rawValue, field) {
+            if (field.kind === FIELD_KINDS.FILE) return rawValue;
+            if (field.kind === FIELD_KINDS.BOOLEAN) return Boolean(rawValue);
+            if (field.kind === FIELD_KINDS.NUMBER) {
+              if (String(rawValue).trim() === '') return undefined;
+              const parsedNumber = Number(rawValue);
+              return Number.isFinite(parsedNumber) ? parsedNumber : undefined;
+            }
+            if (field.kind === FIELD_KINDS.JSON) {
+              const text = String(rawValue || '').trim();
+              if (!text) return undefined;
+              try {
+                return JSON.parse(text);
+              } catch (error) {
+                this.validationError = `${field.label}: ${error instanceof Error ? error.message : String(error)}`;
+                return this.fieldValues[field.key];
+              }
+            }
+            return rawValue;
+          },
+          updateFieldFromEvent(field, event) {
+            const target = event.target;
+            const rawValue = field.kind === FIELD_KINDS.BOOLEAN
+              ? target.checked
+              : field.kind === FIELD_KINDS.FILE
+                ? target.files?.[0] || null
+                : target.value;
+            const nextValue = this.coerceFieldValue(rawValue, field);
+            if (field.kind === FIELD_KINDS.FILE) {
+              this.selectedFile = nextValue;
+              return;
+            }
+            this.updateFieldValue(field.key, nextValue);
+          },
+          updateFieldValue(key, value) {
+            this.validationError = '';
+            if (value === undefined || value === '') {
+              delete this.fieldValues[key];
+            } else {
+              this.fieldValues[key] = value;
+            }
+            this.syncPayloadFromFields();
+          },
+          addChatMessage(role = 'user') {
+            this.chatMessages.push({ role, content: '' });
+            this.syncPayloadFromFields();
+          },
+          addComposerMessage() {
+            const content = this.composerDraft.trim();
+            if (!content) return;
+            this.chatMessages.push({ role: 'user', content });
+            this.composerDraft = '';
+            this.syncPayloadFromFields();
+          },
+          removeChatMessage(index) {
+            this.chatMessages.splice(index, 1);
+            if (!this.chatMessages.length) this.chatMessages.push({ role: 'user', content: '' });
+            this.syncPayloadFromFields();
+          },
+          updateChatMessage(index, field, value) {
+            if (!this.chatMessages[index]) return;
+            this.chatMessages[index] = { ...this.chatMessages[index], [field]: value };
+            this.syncPayloadFromFields();
+          },
+          updateSelectedFile(event) {
+            this.selectedFile = event.target.files?.[0] || null;
+          },
+          syncFieldsFromPayload(payload) {
+            const defaults = this.cloneDefaultPayload(this.activeEndpoint);
+            const values = {};
+            this.activeEndpoint.fields.forEach((field) => {
+              if (field.kind === FIELD_KINDS.FILE) return;
+              if (Object.prototype.hasOwnProperty.call(payload, field.key)) {
+                values[field.key] = payload[field.key];
+                return;
+              }
+              if (Object.prototype.hasOwnProperty.call(defaults, field.key)) {
+                values[field.key] = defaults[field.key];
+              }
+            });
+            this.fieldValues = values;
+          },
+          syncProductStateFromPayload(payload) {
+            this.syncFieldsFromPayload(payload);
+            const messages = Array.isArray(payload.messages) ? payload.messages : [];
+            this.chatMessages = messages.length
+              ? messages.map((message) => ({
+                role: CHAT_ROLES.includes(message?.role) ? message.role : 'user',
+                content: String(message?.content ?? ''),
+              }))
+              : [{ role: 'user', content: '' }];
+            this.composerDraft = '';
+            this.promptDraft = Array.isArray(payload.prompt) ? payload.prompt.join('\n') : String(payload.prompt ?? '');
+            const input = payload.input;
+            this.inputDraft = Array.isArray(input) ? input.map((item) => typeof item === 'string' ? item : JSON.stringify(item)).join('\n') : String(input ?? '');
+            this.instructionDraft = String(payload.instructions ?? '');
+          },
+          buildProductPayload(endpoint = this.activeEndpoint) {
+            const payload = {};
+            endpoint.fields.forEach((field) => {
+              if (field.kind === FIELD_KINDS.FILE) return;
+              const value = this.fieldValues[field.key];
+              if (shouldKeepValue(value)) payload[field.key] = value;
+            });
+
+            if (endpoint.key === ENDPOINT_KEYS.CHAT) {
+              const messages = [...this.chatMessages]
+                .map((message) => ({ role: message.role || 'user', content: String(message.content || '').trim() }))
+                .filter((message) => message.content);
+              if (this.composerDraft.trim()) messages.push({ role: 'user', content: this.composerDraft.trim() });
+              payload.messages = messages.length ? messages : [{ role: 'user', content: '' }];
+            }
+
+            if ([ENDPOINT_KEYS.COMPLETIONS, ENDPOINT_KEYS.IMAGES, ENDPOINT_KEYS.VIDEO].includes(endpoint.key)) {
+              payload.prompt = this.promptDraft;
+            }
+
+            if (endpoint.key === ENDPOINT_KEYS.RESPONSES) {
+              payload.input = this.inputDraft;
+              if (this.instructionDraft.trim()) payload.instructions = this.instructionDraft;
+              else delete payload.instructions;
+            }
+
+            if (endpoint.key === ENDPOINT_KEYS.AUDIO) {
+              payload.input = this.inputDraft;
+              if (this.instructionDraft.trim()) payload.instructions = this.instructionDraft;
+            }
+
+            if (endpoint.key === ENDPOINT_KEYS.TRANSCRIPTIONS) {
+              if (this.promptDraft.trim()) payload.prompt = this.promptDraft;
+              else delete payload.prompt;
+            }
+
+            if (endpoint.key === ENDPOINT_KEYS.EMBEDDINGS) {
+              const lines = this.inputDraft.split('\n').map((line) => line.trim()).filter(Boolean);
+              payload.input = lines.length > 1 ? lines : (lines[0] || this.inputDraft);
+            }
+
+            Object.keys(payload).forEach((key) => {
+              if (!shouldKeepValue(payload[key])) delete payload[key];
+            });
+            return payload;
+          },
+          syncPayloadFromFields() {
+            this.payloadText = stringifyPayload(this.buildProductPayload(this.activeEndpoint));
+          },
+          syncFieldsFromEditor() {
+            const parsed = parsePayloadText(this.payloadText);
+            if (!parsed.ok) {
+              this.validationError = parsed.error;
+              return;
+            }
+            this.validationError = '';
+            this.syncProductStateFromPayload(parsed.payload);
+          },
+          resetPayload() {
+            const payload = this.cloneDefaultPayload(this.activeEndpoint);
+            this.payloadText = stringifyPayload(payload);
+            this.syncProductStateFromPayload(payload);
+            this.selectedFile = null;
+          },
+          buildHeaders(apiKey, bodyMode) {
+            return buildHeaders(apiKey, bodyMode);
+          },
+          buildMultipartBody(endpoint, payload, file) {
+            return buildMultipartBody(endpoint, payload, file);
+          },
+          buildRequestSnapshot(url, endpoint, headers, bodyPreview) {
+            return buildRequestSnapshot(url, endpoint, headers, bodyPreview);
+          },
+          buildRequestInit(endpoint, payload, apiKey, file) {
+            return buildRequestInit(endpoint, payload, apiKey, file);
+          },
+          async sendRequest() {
+            const endpoint = this.activeEndpoint;
+            this.validationError = '';
+            if (!this.apiKey.trim()) {
+              this.validationError = 'API Key 必填。';
+              return;
+            }
+            if (endpoint.key === ENDPOINT_KEYS.CHAT) this.addComposerMessage();
+            const payload = endpoint.bodyMode === BODY_MODES.NONE ? {} : this.buildProductPayload(endpoint);
+            this.payloadText = stringifyPayload(payload);
+            if (endpoint.bodyMode === BODY_MODES.MULTIPART && !this.selectedFile) {
+              this.validationError = '音频转写需要选择文件。';
+              return;
+            }
+
+            let url;
+            try {
+              url = joinURL(this.baseURL, endpoint.path);
+            } catch (error) {
+              this.validationError = `Base URL 无效: ${error instanceof Error ? error.message : String(error)}`;
+              return;
+            }
+
+            const bodyPreview = endpoint.bodyMode === BODY_MODES.MULTIPART ? buildMultipartPreview(payload, this.selectedFile) : payload;
+            const init = buildRequestInit(endpoint, payload, this.apiKey.trim(), this.selectedFile);
+            const requestSnapshot = buildRequestSnapshot(url, endpoint, init.headers, bodyPreview);
+            const startedAt = performance.now();
+            this.isSending = true;
+
+            try {
+              const response = await fetch(url, init);
+              const result = await this.readResponse(response, startedAt);
+              this.setLatestResult(result);
+              this.applyProductResult(result);
+              this.appendConsoleEntry({
+                id: createConsoleId(),
+                endpointKey: endpoint.key,
+                createdAt: new Date().toISOString(),
+                request: requestSnapshot,
+                result,
+              });
+              this.saveSettings();
+            } catch (error) {
+              const result = createNetworkErrorResult(error, startedAt);
+              this.setLatestResult(result);
+              this.appendConsoleEntry({
+                id: createConsoleId(),
+                endpointKey: endpoint.key,
+                createdAt: new Date().toISOString(),
+                request: requestSnapshot,
+                result,
+              });
+            } finally {
+              this.isSending = false;
+            }
+          },
+          async readResponse(response, startedAt) {
+            const headers = headersToObject(response.headers);
+            const contentType = headers['content-type'] || '';
+            const isTextLike = contentType.includes(JSON_CONTENT_MARKER) || contentType.startsWith(TEXT_CONTENT_PREFIX) || !contentType;
+            let bodyText = '';
+            let bodyJson = null;
+            let mediaURL = '';
+            let bodySize = 0;
+
+            if (isTextLike) {
+              bodyText = await response.text();
+              bodySize = new Blob([bodyText]).size;
+              try {
+                bodyJson = bodyText ? JSON.parse(bodyText) : null;
+              } catch {
+                bodyJson = null;
+              }
+            } else {
+              const blob = await response.blob();
+              bodySize = blob.size;
+              mediaURL = URL.createObjectURL(blob);
+              bodyText = `[${contentType || 'binary'} ${formatBytes(blob.size)}]`;
+            }
+
+            return {
+              ok: response.ok,
+              status: response.status,
+              statusText: response.statusText,
+              durationMs: Math.max(0, performance.now() - startedAt),
+              contentType,
+              mediaURL,
+              bodySize,
+              headers,
+              bodyText,
+              bodyJson,
+            };
+          },
+          createNetworkErrorResult(error, startedAt) {
+            return createNetworkErrorResult(error, startedAt);
+          },
+          setLatestResult(result) {
+            if (this.latestResult?.mediaURL) URL.revokeObjectURL(this.latestResult.mediaURL);
+            this.latestResult = result;
+          },
+          applyProductResult(result) {
+            if (!result.ok || this.activeEndpointKey !== ENDPOINT_KEYS.CHAT) return;
+            const text = getResultText(result);
+            if (!text) return;
+            const last = this.chatMessages[this.chatMessages.length - 1];
+            if (last?.role === 'assistant' && last.content === text) return;
+            this.chatMessages.push({ role: 'assistant', content: text });
+            this.syncPayloadFromFields();
+          },
+          appendConsoleEntry(entry) {
+            this.consoleEntries = [entry, ...this.consoleEntries].slice(0, REQUEST_LIMITS.CONSOLE_ENTRIES);
+          },
+          clearConsole() {
+            this.consoleEntries = [];
+          },
+          async copyText(text) {
+            const value = String(text || '');
+            if (!value) return;
+            if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(value);
+              return;
+            }
+            const textarea = document.createElement('textarea');
+            textarea.value = value;
+            textarea.setAttribute('readonly', 'readonly');
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+          },
+          async copyLatestResponse() {
+            if (!this.latestResult) return;
+            await this.copyText(this.latestResult.bodyText);
+          },
+          renderCurlCommand(entry) {
+            return renderCurlCommand(entry);
+          },
+          getResultText(result) {
+            return getResultText(result);
+          },
+          getImageSources(result) {
+            return getImageSources(result);
+          },
+          getAudioSource(result) {
+            return getAudioSource(result);
+          },
+          getVideoSource(result) {
+            return getVideoSource(result);
+          },
+          getEmbeddingSummary(result) {
+            return getEmbeddingSummary(result);
+          },
+          saveSettings() {
+            if (!this.persistAuth) {
+              localStorage.setItem(STORAGE_KEYS.PERSIST_AUTH, 'false');
+              localStorage.removeItem(STORAGE_KEYS.BASE_URL);
+              localStorage.removeItem(STORAGE_KEYS.API_KEY);
+              return;
+            }
+            localStorage.setItem(STORAGE_KEYS.PERSIST_AUTH, 'true');
+            localStorage.setItem(STORAGE_KEYS.BASE_URL, this.baseURL);
+            localStorage.setItem(STORAGE_KEYS.API_KEY, this.apiKey);
+          },
+          loadSettings() {
+            const persistAuth = localStorage.getItem(STORAGE_KEYS.PERSIST_AUTH) === 'true';
+            this.persistAuth = persistAuth;
+            if (!persistAuth) return;
+            this.baseURL = localStorage.getItem(STORAGE_KEYS.BASE_URL) || this.baseURL;
+            this.apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || '';
+          },
+          clearSavedSettings() {
+            Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+            this.persistAuth = false;
+            this.apiKey = '';
+            this.baseURL = getDefaultBaseURL();
+          },
+          loadModelsQuick() {
+            this.setActiveEndpoint('models');
+            this.sendRequest();
+          },
+        },
+      }).mount('#debug-app');
+    </script>
+  </body>
+</html>
