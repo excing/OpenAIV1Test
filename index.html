@@ -260,12 +260,19 @@
       }
 
       /* Upload zone */
+      .upload-stack { display: grid; gap: 10px; }
       .upload-zone {
         min-height: 100px; display: grid; place-items: center; text-align: center;
         padding: 24px; border: 1px dashed var(--line); border-radius: var(--r-sm);
         background: oklch(99% 0.004 85); cursor: pointer;
       }
       .upload-zone:hover { border-color: var(--ink-muted); background: var(--surface-hover); }
+      .upload-zone.compact { min-height: 78px; padding: 16px; }
+      .upload-preview {
+        width: 100%; aspect-ratio: 1; object-fit: contain;
+        border-radius: var(--r-sm); border: 1px solid var(--line-light);
+        background: var(--surface); margin-top: 10px;
+      }
 
       /* Response block */
       .response-block { margin-top: 28px; background: var(--surface); border: 1px solid var(--line-light); border-radius: var(--r-lg); }
@@ -579,6 +586,62 @@
             </div>
           </div>
 
+          <!-- ── Image Edits ── -->
+          <div v-if="activeEndpointKey === ENDPOINT_KEYS.IMAGE_EDITS" class="product-surface">
+            <div class="surface-hd">
+              <div>
+                <h3>图片编辑工作台</h3>
+                <p class="hd-desc">上传源图，输入修改要求，必要时添加透明遮罩</p>
+              </div>
+              <button class="btn btn-primary" :disabled="isSending" @click="sendRequest">{{ isSending ? '编辑中' : '编辑图片' }}</button>
+            </div>
+            <div class="surface-bd">
+              <div class="product-2col">
+                <div style="display:grid;gap:14px">
+                  <div class="upload-stack">
+                    <label class="upload-zone compact">
+                      <input class="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/*" @change="updateSelectedFile($event, 'image')" />
+                      <span>
+                        <span style="display:block;font-size:15px;font-weight:700">{{ selectedFile ? selectedFile.name : '选择源图片' }}</span>
+                        <span style="display:block;margin-top:6px;font-size:12.5px;color:var(--ink-soft)">{{ selectedFile ? formatBytes(selectedFile.size) : '支持 PNG、JPEG、WebP 等图片' }}</span>
+                      </span>
+                    </label>
+                    <img v-if="selectedImagePreviewURL" class="upload-preview" :src="selectedImagePreviewURL" alt="source image preview" />
+                    <label class="upload-zone compact">
+                      <input class="sr-only" type="file" accept="image/png,image/*" @change="updateSelectedFile($event, 'mask')" />
+                      <span>
+                        <span style="display:block;font-size:14px;font-weight:700">{{ selectedMaskFile ? selectedMaskFile.name : '选择遮罩（可选）' }}</span>
+                        <span style="display:block;margin-top:6px;font-size:12.5px;color:var(--ink-soft)">{{ selectedMaskFile ? formatBytes(selectedMaskFile.size) : '透明区域会被模型重绘' }}</span>
+                      </span>
+                    </label>
+                    <img v-if="selectedMaskPreviewURL" class="upload-preview" :src="selectedMaskPreviewURL" alt="mask preview" />
+                  </div>
+                  <label>
+                    <span class="label">Prompt</span>
+                    <textarea v-model="promptDraft" class="input" style="min-height:160px;font-size:15px;line-height:1.7" spellcheck="false" placeholder="描述要如何修改图片…" @input="syncPayloadFromFields"></textarea>
+                  </label>
+                  <div>
+                    <span class="label">Size</span>
+                    <div class="chip-group">
+                      <button v-for="size in imageSizeOptions" :key="size" class="chip" :class="{ active: fieldValues.size === size }" @click="updateFieldValue('size', size)">{{ size }}</button>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div v-if="imageSources.length" class="image-gallery">
+                    <img v-for="src in imageSources" :key="src" :src="src" alt="edited result" />
+                  </div>
+                  <div v-else class="empty-state">编辑后的图片会显示在这里</div>
+                </div>
+              </div>
+            </div>
+            <div class="surface-ft">
+              <button class="btn btn-secondary" @click="resetPayload">恢复模板</button>
+              <button class="btn btn-secondary" :disabled="!selectedMaskFile" @click="clearSelectedFile('mask')">清除遮罩</button>
+              <button class="btn btn-secondary" :disabled="!imageSources.length" @click="copyLatestResponse">复制结果</button>
+            </div>
+          </div>
+
           <!-- ── Audio Speech ── -->
           <div v-if="activeEndpointKey === ENDPOINT_KEYS.AUDIO" class="product-surface">
             <div class="surface-hd">
@@ -813,6 +876,7 @@
         COMPLETIONS: 'completions',
         RESPONSES: 'responses',
         IMAGES: 'image_generations',
+        IMAGE_EDITS: 'image_edits',
         AUDIO: 'audio_speech',
         TRANSCRIPTIONS: 'audio_transcriptions',
         EMBEDDINGS: 'embeddings',
@@ -820,13 +884,14 @@
       };
 
       const CHAT_ROLES = ['system', 'user', 'assistant', 'tool'];
-      const PRODUCT_MAIN_FIELD_KEYS = new Set(['messages', 'prompt', 'input', 'instructions', 'file', 'suffix']);
+      const PRODUCT_MAIN_FIELD_KEYS = new Set(['messages', 'prompt', 'input', 'instructions', 'file', 'image', 'mask', 'suffix']);
       const PRODUCT_ACTION_LABELS = {
         [ENDPOINT_KEYS.MODELS]: '刷新模型',
         [ENDPOINT_KEYS.CHAT]: '发送',
         [ENDPOINT_KEYS.COMPLETIONS]: '续写',
         [ENDPOINT_KEYS.RESPONSES]: '运行任务',
         [ENDPOINT_KEYS.IMAGES]: '生成图片',
+        [ENDPOINT_KEYS.IMAGE_EDITS]: '编辑图片',
         [ENDPOINT_KEYS.AUDIO]: '生成语音',
         [ENDPOINT_KEYS.TRANSCRIPTIONS]: '开始转写',
         [ENDPOINT_KEYS.EMBEDDINGS]: '生成向量',
@@ -916,9 +981,12 @@
         moderation: makeField('moderation', 'Moderation', FIELD_KINDS.SELECT, '图片安全过滤级别。', { options: ['', 'auto', 'low'], advanced: true }),
         output_format: makeField('output_format', 'Output Format', FIELD_KINDS.SELECT, '图片输出格式。', { options: ['', 'png', 'jpeg', 'webp'], advanced: true }),
         output_compression: makeField('output_compression', 'Output Compression', FIELD_KINDS.NUMBER, '图片压缩质量，通常为 0 到 100。', { min: 0, max: 100, step: 1, advanced: true }),
+        input_fidelity: makeField('input_fidelity', 'Input Fidelity', FIELD_KINDS.SELECT, '图片编辑时保留输入图细节的强度。', { options: ['', 'low', 'high'], advanced: true }),
         voice: makeField('voice', 'Voice', FIELD_KINDS.SELECT, '语音生成音色。', { required: true, options: ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'] }),
         speed: makeField('speed', 'Speed', FIELD_KINDS.NUMBER, '语速倍率，通常为 0.25 到 4。', { min: 0.25, max: 4, step: 0.05 }),
         file: makeField('file', 'File', FIELD_KINDS.FILE, '音频转写文件。', { required: true }),
+        image: makeField('image', 'Image', FIELD_KINDS.FILE, '图片编辑使用的源图片。', { required: true }),
+        mask: makeField('mask', 'Mask', FIELD_KINDS.FILE, '可选透明遮罩，透明区域会被重绘。', { advanced: true }),
         language: makeField('language', 'Language', FIELD_KINDS.TEXT, '输入音频语言 ISO-639-1 代码。', { placeholder: 'zh', advanced: true }),
         timestamp_granularities: makeField('timestamp_granularities', 'Timestamp Granularities', FIELD_KINDS.JSON, '转写时间戳粒度数组。', { advanced: true }),
         encoding_format: makeField('encoding_format', 'Encoding Format', FIELD_KINDS.SELECT, '向量返回格式。', { options: ['float', 'base64'] }),
@@ -996,6 +1064,22 @@
         FIELD_DEFINITIONS.response_format,
         FIELD_DEFINITIONS.background,
         FIELD_DEFINITIONS.moderation,
+        FIELD_DEFINITIONS.output_format,
+        FIELD_DEFINITIONS.output_compression,
+        FIELD_DEFINITIONS.user,
+      ];
+
+      const IMAGE_EDIT_FIELDS = [
+        FIELD_DEFINITIONS.model,
+        FIELD_DEFINITIONS.image,
+        FIELD_DEFINITIONS.mask,
+        FIELD_DEFINITIONS.prompt,
+        FIELD_DEFINITIONS.n,
+        FIELD_DEFINITIONS.size,
+        FIELD_DEFINITIONS.quality,
+        FIELD_DEFINITIONS.response_format,
+        FIELD_DEFINITIONS.background,
+        FIELD_DEFINITIONS.input_fidelity,
         FIELD_DEFINITIONS.output_format,
         FIELD_DEFINITIONS.output_compression,
         FIELD_DEFINITIONS.user,
@@ -1127,7 +1211,26 @@
           fields: IMAGE_FIELDS,
           defaultPayload: {
             model: DEFAULT_IMAGE_MODEL,
-            prompt: 'A clean product screenshot of an API debugging workbench, realistic UI, neutral background',
+            prompt: '1 cat',
+            n: 1,
+            size: '1024x1024',
+            quality: 'auto',
+            response_format: 'url',
+          },
+        },
+        {
+          key: 'image_edits',
+          label: '图片编辑',
+          shortLabel: '编辑',
+          method: 'POST',
+          path: '/v1/images/edits',
+          bodyMode: BODY_MODES.MULTIPART,
+          resultType: RESULT_TYPES.IMAGE,
+          description: '调试 multipart 图片编辑请求，支持源图、遮罩、尺寸和输出格式。',
+          fields: IMAGE_EDIT_FIELDS,
+          defaultPayload: {
+            model: DEFAULT_IMAGE_MODEL,
+            prompt: 'Keep the main subject, replace the background with a clean studio setup, realistic lighting',
             n: 1,
             size: '1024x1024',
             quality: 'auto',
@@ -1277,7 +1380,11 @@
         return headers;
       }
 
-      function buildMultipartBody(endpoint, payload, file) {
+      function getFilePreview(file) {
+        return file ? { name: file.name, type: file.type, size: file.size } : null;
+      }
+
+      function buildMultipartBody(endpoint, payload, file, maskFile) {
         const form = new FormData();
         Object.entries(payload || {}).forEach(([key, value]) => {
           if (!shouldKeepValue(value)) return;
@@ -1287,14 +1394,26 @@
           }
           form.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
         });
+        if (endpoint.key === ENDPOINT_KEYS.IMAGE_EDITS) {
+          if (file) form.set('image', file);
+          if (maskFile) form.set('mask', maskFile);
+          return form;
+        }
         if (file) form.set('file', file);
         return form;
       }
 
-      function buildMultipartPreview(payload, file) {
+      function buildMultipartPreview(endpoint, payload, file, maskFile) {
+        if (endpoint.key === ENDPOINT_KEYS.IMAGE_EDITS) {
+          return {
+            ...payload,
+            image: getFilePreview(file),
+            mask: getFilePreview(maskFile),
+          };
+        }
         return {
           ...payload,
-          file: file ? { name: file.name, type: file.type, size: file.size } : null,
+          file: getFilePreview(file),
         };
       }
 
@@ -1304,19 +1423,20 @@
         return {
           method: endpoint.method,
           url,
+          bodyMode: endpoint.bodyMode,
           headers: headersObject,
           bodyPreview,
         };
       }
 
-      function buildRequestInit(endpoint, payload, apiKey, file) {
+      function buildRequestInit(endpoint, payload, apiKey, file, maskFile) {
         const headers = buildHeaders(apiKey, endpoint.bodyMode);
         const init = { method: endpoint.method, headers };
         if (endpoint.bodyMode === BODY_MODES.JSON) {
           init.body = JSON.stringify(payload || {});
         }
         if (endpoint.bodyMode === BODY_MODES.MULTIPART) {
-          init.body = buildMultipartBody(endpoint, payload, file);
+          init.body = buildMultipartBody(endpoint, payload, file, maskFile);
         }
         return init;
       }
@@ -1389,14 +1509,44 @@
         return `vectors=${data.length}, dimensions=${firstEmbedding.length}`;
       }
 
+      function escapeCurlPart(value) {
+        return String(value).replaceAll("'", "'\\''");
+      }
+
+      function isFilePreview(value) {
+        return Boolean(value && typeof value === 'object' && typeof value.name === 'string' && typeof value.size === 'number');
+      }
+
+      function renderMultipartParts(bodyPreview) {
+        return Object.entries(bodyPreview || {}).flatMap(([key, value]) => {
+          if (!shouldKeepValue(value)) return [];
+          if (Array.isArray(value)) {
+            return value.map((item) => {
+              const formValue = typeof item === 'object' ? JSON.stringify(item) : String(item);
+              return `  -F '${escapeCurlPart(`${key}[]=${formValue}`)}'`;
+            });
+          }
+          if (isFilePreview(value)) {
+            return [`  -F '${escapeCurlPart(`${key}=@${value.name}`)}'`];
+          }
+          const formValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+          return [`  -F '${escapeCurlPart(`${key}=${formValue}`)}'`];
+        });
+      }
+
       function renderCurlCommand(entry) {
         if (!entry) return '';
         const headerArgs = Object.entries(entry.request.headers)
           .map(([key, value]) => `  -H '${key}: ${String(value).replaceAll("'", "'\\''")}'`)
           .join(' \\\n');
-        const body = entry.request.bodyPreview && Object.keys(entry.request.bodyPreview).length
-          ? ` \\\n  --data '${JSON.stringify(entry.request.bodyPreview).replaceAll("'", "'\\''")}'`
-          : '';
+        const bodyParts = entry.request.bodyMode === BODY_MODES.MULTIPART
+          ? renderMultipartParts(entry.request.bodyPreview)
+          : [];
+        const body = bodyParts.length
+          ? ` \\\n${bodyParts.join(' \\\n')}`
+          : entry.request.bodyPreview && Object.keys(entry.request.bodyPreview).length
+            ? ` \\\n  --data '${escapeCurlPart(JSON.stringify(entry.request.bodyPreview))}'`
+            : '';
         return [`curl -X ${entry.request.method} '${entry.request.url}'`, headerArgs, body].filter(Boolean).join(' \\\n');
       }
 
@@ -1436,6 +1586,9 @@
             inputDraft: '',
             instructionDraft: '',
             selectedFile: null,
+            selectedMaskFile: null,
+            selectedImagePreviewURL: '',
+            selectedMaskPreviewURL: '',
             isSending: false,
             validationError: '',
             latestResult: null,
@@ -1567,7 +1720,7 @@
                 : target.value;
             const nextValue = this.coerceFieldValue(rawValue, field);
             if (field.kind === FIELD_KINDS.FILE) {
-              this.selectedFile = nextValue;
+              this.setSelectedUploadFile(field.key, nextValue);
               return;
             }
             this.updateFieldValue(field.key, nextValue);
@@ -1602,8 +1755,29 @@
             this.chatMessages[index] = { ...this.chatMessages[index], [field]: value };
             this.syncPayloadFromFields();
           },
-          updateSelectedFile(event) {
-            this.selectedFile = event.target.files?.[0] || null;
+          revokePreviewURL(url) {
+            if (url) URL.revokeObjectURL(url);
+          },
+          setSelectedUploadFile(key, file) {
+            if (key === 'mask') {
+              this.revokePreviewURL(this.selectedMaskPreviewURL);
+              this.selectedMaskFile = file;
+              this.selectedMaskPreviewURL = file ? URL.createObjectURL(file) : '';
+              return;
+            }
+            if (key === 'image') {
+              this.revokePreviewURL(this.selectedImagePreviewURL);
+              this.selectedFile = file;
+              this.selectedImagePreviewURL = file ? URL.createObjectURL(file) : '';
+              return;
+            }
+            this.selectedFile = file;
+          },
+          updateSelectedFile(event, key = 'file') {
+            this.setSelectedUploadFile(key, event.target.files?.[0] || null);
+          },
+          clearSelectedFile(key = 'file') {
+            this.setSelectedUploadFile(key, null);
           },
           syncFieldsFromPayload(payload) {
             const defaults = this.cloneDefaultPayload(this.activeEndpoint);
@@ -1651,7 +1825,7 @@
               payload.messages = messages.length ? messages : [{ role: 'user', content: '' }];
             }
 
-            if ([ENDPOINT_KEYS.COMPLETIONS, ENDPOINT_KEYS.IMAGES, ENDPOINT_KEYS.VIDEO].includes(endpoint.key)) {
+            if ([ENDPOINT_KEYS.COMPLETIONS, ENDPOINT_KEYS.IMAGES, ENDPOINT_KEYS.IMAGE_EDITS, ENDPOINT_KEYS.VIDEO].includes(endpoint.key)) {
               payload.prompt = this.promptDraft;
             }
 
@@ -1697,19 +1871,20 @@
             const payload = this.cloneDefaultPayload(this.activeEndpoint);
             this.payloadText = stringifyPayload(payload);
             this.syncProductStateFromPayload(payload);
-            this.selectedFile = null;
+            this.clearSelectedFile('image');
+            this.clearSelectedFile('mask');
           },
           buildHeaders(apiKey, bodyMode) {
             return buildHeaders(apiKey, bodyMode);
           },
-          buildMultipartBody(endpoint, payload, file) {
-            return buildMultipartBody(endpoint, payload, file);
+          buildMultipartBody(endpoint, payload, file, maskFile) {
+            return buildMultipartBody(endpoint, payload, file, maskFile);
           },
           buildRequestSnapshot(url, endpoint, headers, bodyPreview) {
             return buildRequestSnapshot(url, endpoint, headers, bodyPreview);
           },
-          buildRequestInit(endpoint, payload, apiKey, file) {
-            return buildRequestInit(endpoint, payload, apiKey, file);
+          buildRequestInit(endpoint, payload, apiKey, file, maskFile) {
+            return buildRequestInit(endpoint, payload, apiKey, file, maskFile);
           },
           async sendRequest() {
             const endpoint = this.activeEndpoint;
@@ -1722,7 +1897,7 @@
             const payload = endpoint.bodyMode === BODY_MODES.NONE ? {} : this.buildProductPayload(endpoint);
             this.payloadText = stringifyPayload(payload);
             if (endpoint.bodyMode === BODY_MODES.MULTIPART && !this.selectedFile) {
-              this.validationError = '音频转写需要选择文件。';
+              this.validationError = endpoint.key === ENDPOINT_KEYS.IMAGE_EDITS ? '图片编辑需要选择源图片。' : '音频转写需要选择文件。';
               return;
             }
 
@@ -1734,8 +1909,8 @@
               return;
             }
 
-            const bodyPreview = endpoint.bodyMode === BODY_MODES.MULTIPART ? buildMultipartPreview(payload, this.selectedFile) : payload;
-            const init = buildRequestInit(endpoint, payload, this.apiKey.trim(), this.selectedFile);
+            const bodyPreview = endpoint.bodyMode === BODY_MODES.MULTIPART ? buildMultipartPreview(endpoint, payload, this.selectedFile, this.selectedMaskFile) : payload;
+            const init = buildRequestInit(endpoint, payload, this.apiKey.trim(), this.selectedFile, this.selectedMaskFile);
             const requestSnapshot = buildRequestSnapshot(url, endpoint, init.headers, bodyPreview);
             const startedAt = performance.now();
             this.isSending = true;
